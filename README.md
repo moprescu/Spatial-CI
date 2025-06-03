@@ -28,11 +28,16 @@ pip install "spacebench[all]" --no-deps
 ## Space-data repo
 space-data repo (creating data)
 ```
-conda env create -f requirements.yaml
+conda env create -f space-data/requirements.yaml
 conda activate spacedata
 \
 ```
 
+## Run DAPSM code
+
+```
+PYTHONPATH=. snakemake --configfile benchmarks/conf/pipeline.yaml -C concurrency=1 cpus_per_task=1 --use-conda -j=10
+```
 
 ## Debugging
 
