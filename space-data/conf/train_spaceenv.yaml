@@ -1,0 +1,64 @@
+defaults:
+  - _self_
+  - spaceenv: ???
+
+spaceenv:
+  base_name: ${hydra:runtime.choices.spaceenv}
+  covariates: null
+  outcome: ???
+  treament: ???
+  index_col: 0
+  treatment_max_bins: 100  # for binary bins will be 2
+
+  scaling:  # scaling done before transforms
+    outcome:  # unit, standard
+    treatment:  # unit, standard
+    covariates:
+
+  transforms:
+    outcome:   # log, symlog, logit
+    treatment:   # log, symlog, logit
+    covariates:
+
+  fill_missing_covariate_values: true  # on covariates
+  
+  # augmentations for the treatment
+  bsplines: false  # for continuous treatments only
+  bsplines_degree: 3
+  bsplines_df: 5
+  binary_treatment_iteractions: true  # add interaction columns for binary treatments
+
+  seed: 42
+
+  autogluon:
+    fit:
+      presets: good_quality
+      time_limit: 900  # in seconds, null means no limit
+                        # this paremeter can be overriden in the
+                        # config of each spaceenv for complex envs.
+                        # similarly with the time limits below, presets
+                        # and hyperparmeters
+    leave_out_fit:  # used for confounding scores
+      presets: good_quality
+      time_limit: 900
+    feat_importance:
+      time_limit: 900
+
+  spatial_tuning:  
+    init_frac: 0.03  # usually 50-70% train with 2=levels+buffer
+    levels: 1  # number of neighbors of tune points to include
+    buffer: 1  # distance in levels to include around tune points
+
+  treatment_quantile_valid_range: [0.025, 0.975]
+  outcome_quantile_valid_range: [0.01, 0.99]
+
+  ensemble_models: ["FASTAI", "CAT", "NN_TORCH", "XGB"]
+
+num_plot_samples: 50
+debug_subsample:  # for quicker debugging set to a small number
+
+hydra:
+  run:
+    dir: trained_spaceenvs/${spaceenv.base_name}
+  job:
+    chdir: true
