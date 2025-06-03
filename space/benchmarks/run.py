@@ -38,6 +38,7 @@ def main(cfg: DictConfig) -> None:
 
     # check if run_config.storage_path exists, and if so, delete it
     raydir = f"{cfg.algo.tune.run_config.local_dir}/{cfg.algo.name}"
+    cfg.algo.tune.run_config.local_dir = os.path.abspath(cfg.algo.tune.run_config.local_dir)
     if os.path.exists(raydir):
         LOGGER.info(f"Cleaning ray path {raydir}")
         shutil.rmtree(raydir)
