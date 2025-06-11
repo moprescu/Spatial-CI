@@ -1,0 +1,6 @@
+[submodule "space"]
+	path = space
+	url = https://github.com/NSAPH-Projects/space.git
+[submodule "space-data"]
+	path = space-data
+	url = https://github.com/NSAPH-Projects/space-data.git

@@ -1,8 +1,0 @@
-.vscode
-**/.DS_Store
-**/__pycache__
-**/.ipynb_checkpoints
-.cache/
-.devcontainer
-.snakemake/
-*.sif
