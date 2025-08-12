@@ -36,6 +36,9 @@ class SpaceDataset:
     confounding_score: dict[Literal["ate", "erf", "ite"], list[float]] | None = None
     coordinates: np.ndarray | None = None
     parent_env: str | None = None
+    topfeat: list[str] = None
+    radius: int = None
+    node2id: dict[str, int] = None
 
     def has_binary_treatment(self) -> bool:
         """
@@ -128,6 +131,9 @@ class SpaceDataset:
         new_ind = sorted(set(itertools.chain.from_iterable(subedges)))
         new_ind = {x: i for i, x in enumerate(new_ind)}
         new_edges = [(new_ind[e[0]], new_ind[e[1]]) for e in subedges]
+        
+        new_node2id = {k: new_ind[v] for k, v in self.node2id.items() if v in new_ind}
+
 
         return SpaceDataset(
             treatment=self.treatment[idx],
@@ -141,6 +147,9 @@ class SpaceDataset:
             counterfactuals=self.counterfactuals[idx],
             coordinates=self.coordinates[idx] if self.coordinates is not None else None,
             parent_env=self.parent_env,
+            topfeat=self.topfeat,
+            radius=self.radius,
+            node2id=new_node2id,
         )
 
     def size(self) -> int:
@@ -206,6 +215,9 @@ class SpaceDataset:
                 counterfactuals=self.counterfactuals,
                 coordinates=self.coordinates,
                 parent_env=self.parent_env,
+                topfeat=self.topfeat,
+                radius=self.radius,
+                node2id=self.node2id,
             )
 
 
@@ -340,11 +352,12 @@ class SpaceEnv:
         node2id = {n: i for i, n in enumerate(data.index)}
         self.edge_list = [(node2id[e[0]], node2id[e[1]]) for e in graph.edges]
         self.graph = nx.from_edgelist(self.edge_list)
-
-        coordinates = []
-        for v in graph.nodes.values():
-            coordinates.append([float(x) for x in v.values()])
-        self.coordinates = np.array(coordinates)
+        
+        self.coordinates = np.array([list(map(int, k.split('_'))) for k in node2id.keys()])
+        # coordinates = []
+        # for v in graph.nodes.values():
+        #     coordinates.append([float(x) for x in v.values()])
+        # self.coordinates = np.array(coordinates)
 
         # -- 6. covariates --
         # keep it as pandas dataframe so that is easier to subset
@@ -371,6 +384,10 @@ class SpaceEnv:
         self.smoothness_score = {
             x: float(v) for x, v in self.metadata["spatial_scores"].items()
         }
+        
+        self.topfeat = list(self.confounding_score["erf"].keys())
+        self.radius = self.metadata["radius"]
+        self.node2id = node2id
 
     def make(
         self,
@@ -392,7 +409,7 @@ class SpaceEnv:
             A SpaceDataset.
         """
         if missing_group is None:
-            keys = list(self.covariate_groups.keys())
+            keys = list(self.confounding_score.keys())
             missing_group = np.random.choice(keys)
             LOGGER.debug(
                 f"Missing covariate group (selected at random): {missing_group}"
@@ -403,13 +420,13 @@ class SpaceEnv:
         # observed covariates
         obs_covars_cols = list(
             itertools.chain.from_iterable(
-                [v for k, v in self.covariate_groups.items() if k != missing_group]
+                [v for k, v in self.covariate_groups.items() if missing_group not in v]
             )
         )
         obs_covars = self.covariates_df[obs_covars_cols].values
 
         # missing covariates
-        miss_covars_cols = self.covariate_groups[missing_group]
+        miss_covars_cols = [missing_group]
         miss_covars = self.covariates_df[miss_covars_cols].values
 
         # smoothness scores
@@ -436,6 +453,9 @@ class SpaceEnv:
             confounding_score=miss_confounding,
             treatment_values=self.treatment_values,
             parent_env=self.name,
+            topfeat=self.topfeat,
+            radius=self.radius,
+            node2id=self.node2id,
         )
 
     def make_all(self):
@@ -447,7 +467,7 @@ class SpaceEnv:
         -------
         Generator[SpaceDataset]: Generator of SpaceDatasets
         """
-        for c in self.covariate_groups:
+        for c in self.topfeat:
             yield self.make(missing_group=c)
 
     def has_binary_treatment(self) -> bool:

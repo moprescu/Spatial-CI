@@ -38,16 +38,17 @@ def main(cfg: DictConfig) -> None:
             return
 
     # check if run_config.storage_path exists, and if so, delete it
-    raydir = f"{cfg.algo.tune.run_config.local_dir}/{cfg.algo.name}"
-    cfg.algo.tune.run_config.local_dir = os.path.abspath(cfg.algo.tune.run_config.local_dir)
+    raydir = f"{cfg.algo.tune.run_config.storage_path}/{cfg.algo.name}"
+    cfg.algo.tune.run_config.storage_path = os.path.abspath(cfg.algo.tune.run_config.storage_path)
     if os.path.exists(raydir):
         LOGGER.info(f"Cleaning ray path {raydir}")
         shutil.rmtree(raydir)
 
     env_name = cfg.spaceenv
     env = SpaceEnv(env_name, dir="downloads")
+    print(env.coordinates)
     train_ix, test_ix, _ = spatial_train_test_split(
-        env.graph, **cfg.spatial_train_test_split
+        env.graph, **{**cfg.spatial_train_test_split, "buffer": cfg.spatial_train_test_split["buffer"] + env.radius if cfg.algo.use_interference else cfg.spatial_train_test_split["buffer"]}
     )
 
     for i, full_dataset in enumerate(env.make_all()):
@@ -120,6 +121,8 @@ def main(cfg: DictConfig) -> None:
         eval_results["confounding"] = full_dataset.confounding_score
         eval_results["timestamp"] = timestamp
         eval_results["binary"] = full_dataset.has_binary_treatment()
+        
+        eval_results["radius"] = full_dataset.radius
 
         LOGGER.info(f"eval results: {eval_results}")
 

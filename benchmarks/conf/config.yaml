@@ -28,14 +28,14 @@ algo:  # these config must be overwritten by algo/*.yaml
       cpu: 1
     tune_config:
       _target_: ray.tune.TuneConfig
-      num_samples: 10
+      num_samples: 15
       max_concurrent_trials: ${concurrency}
       scheduler:
         _target_: ray.tune.schedulers.ASHAScheduler
       mode: min
     run_config:
       _target_: ray.air.RunConfig
-      local_dir: benchmarks/ray_cache/${spaceenv}/${hydra:runtime.choices.algo}
+      storage_path: benchmarks/ray_cache/${spaceenv}/${hydra:runtime.choices.algo}
 
 hydra:
   run:
