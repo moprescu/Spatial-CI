@@ -39,6 +39,9 @@ class SpaceDataset:
     topfeat: list[str] = None
     radius: int = None
     node2id: dict[str, int] = None
+    full_edge_list: list[tuple[int, int]] = None
+    full_treatment: np.ndarray = None
+    full_coordinates: np.ndarray = None
 
     def has_binary_treatment(self) -> bool:
         """
@@ -150,6 +153,9 @@ class SpaceDataset:
             topfeat=self.topfeat,
             radius=self.radius,
             node2id=new_node2id,
+            full_edge_list=self.full_edge_list,
+            full_treatment=self.full_treatment,
+            full_coordinates=self.full_coordinates,
         )
 
     def size(self) -> int:
@@ -218,6 +224,9 @@ class SpaceDataset:
                 topfeat=self.topfeat,
                 radius=self.radius,
                 node2id=self.node2id,
+                full_edge_list=self.full_edge_list,
+                full_treatment=self.full_treatment,
+                full_coordinates=self.full_coordinates,
             )
 
 
@@ -353,7 +362,17 @@ class SpaceEnv:
         self.edge_list = [(node2id[e[0]], node2id[e[1]]) for e in graph.edges]
         self.graph = nx.from_edgelist(self.edge_list)
         
-        self.coordinates = np.array([list(map(int, k.split('_'))) for k in node2id.keys()])
+        if "grid" in self.metadata["base_name"]:
+            self.coordinates = np.array([list(map(int, k.split('_'))) for k in node2id.keys()])
+        else:
+            import geopandas as gpd
+            gdf = gpd.read_file(os.path.join(tgtdir, "map_df.geojson"))
+            map_df = map_df.loc[data.index]
+            print(map_df)
+            self.coordinates = map_df[["latitude", "longitude"]].to_numpy()
+            print(self.coordinates)
+            
+            
         # coordinates = []
         # for v in graph.nodes.values():
         #     coordinates.append([float(x) for x in v.values()])
@@ -456,6 +475,9 @@ class SpaceEnv:
             topfeat=self.topfeat,
             radius=self.radius,
             node2id=self.node2id,
+            full_edge_list=self.edge_list,
+            full_treatment=self.treatment,
+            full_coordinates=self.coordinates,
         )
 
     def make_all(self):

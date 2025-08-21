@@ -25,7 +25,8 @@ algo:  # these config must be overwritten by algo/*.yaml
   tune:  # ray tune resources, can override  in algo/*.yaml but not needed
     param_space: {}
     resources:
-      cpu: 1
+      cpu: 4
+      gpu: 1
     tune_config:
       _target_: ray.tune.TuneConfig
       num_samples: 15

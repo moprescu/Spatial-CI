@@ -38,7 +38,7 @@ algorithms:
     # - s2sls-lag2
     # - gmerror
   disc:
-    - dapsm
+    # - dapsm
     # - spatial
     # - spatialplus
     # - xgboost
@@ -46,4 +46,4 @@ algorithms:
     # - gcn
     # - s2sls-lag1
     # - s2sls-lag2
-    # - gmerror
+    - gmerror_gpu

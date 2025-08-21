@@ -43,7 +43,8 @@ rule train_spaceenv:
         err="logs/{spaceenv}/{algo}.err",
     shell:
         """
-        python benchmarks/run.py \
+        export LD_LIBRARY_PATH=/home/idies/workspace/Temporary/akhot2/scratch/spacedata/lib/python3.10/site-packages/nvidia/cuda/lib:$LD_LIBRARY_PATH
+        HYDRA_FULL_ERROR=1 python benchmarks/run.py \
             algo={wildcards.algo} \
             spaceenv={wildcards.spaceenv} \
             concurrency={params.concurrency} \
