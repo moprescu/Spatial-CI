@@ -611,7 +611,7 @@ class Deconfounder(SpaceAlgo):
             preds_a = self.traindata.output_scaler.inverse_transform(preds_a)
             ite.append(preds_a)
         ite = np.concatenate(ite, axis=1)
-        ite += resid[:, None]
+        # ite += resid[:, None]
 
         effects = {"erf": ite.mean(0), "ite": ite}
 
@@ -628,7 +628,7 @@ class Deconfounder(SpaceAlgo):
                 preds_a = self.traindata.output_scaler.inverse_transform(preds_a)
                 spill.append(preds_a)
             spill = np.concatenate(spill, axis=1)
-            spill += resid[:, None]
+            # spill += resid[:, None]
             
             s = spill.mean(0)
             effects["spill"] = s[1] - s[0]

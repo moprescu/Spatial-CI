@@ -2,7 +2,7 @@ needs_train_test_split: true
 use_interference: false
 
 method:
-  _target_: spacebench.algorithms.GCN
+  _target_: sci.algorithms.GCN
   verbose: false
 
 tune:
