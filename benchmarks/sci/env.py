@@ -31,6 +31,7 @@ class SpaceDataset:
     edges: list[tuple[int, int]]
     treatment_values: np.ndarray
     counterfactuals: np.ndarray
+    spill_counterfactuals: np.ndarray
     missing_covariates: np.ndarray | None = None
     smoothness_score: list[float] | None = None
     confounding_score: dict[Literal["ate", "erf", "ite"], list[float]] | None = None
@@ -41,6 +42,8 @@ class SpaceDataset:
     node2id: dict[str, int] = None
     full_edge_list: list[tuple[int, int]] = None
     full_treatment: np.ndarray = None
+    full_covariates: np.ndarray = None
+    full_outcome: np.ndarray = None
     full_coordinates: np.ndarray = None
 
     def has_binary_treatment(self) -> bool:
@@ -148,6 +151,7 @@ class SpaceDataset:
             smoothness_score=self.smoothness_score,
             confounding_score=self.confounding_score,
             counterfactuals=self.counterfactuals[idx],
+            spill_counterfactuals=self.spill_counterfactuals[idx],
             coordinates=self.coordinates[idx] if self.coordinates is not None else None,
             parent_env=self.parent_env,
             topfeat=self.topfeat,
@@ -155,6 +159,8 @@ class SpaceDataset:
             node2id=new_node2id,
             full_edge_list=self.full_edge_list,
             full_treatment=self.full_treatment,
+            full_covariates=self.full_covariates,
+            full_outcome=self.full_outcome,
             full_coordinates=self.full_coordinates,
         )
 
@@ -219,6 +225,7 @@ class SpaceDataset:
                 smoothness_score=self.smoothness_score,
                 confounding_score=self.confounding_score,
                 counterfactuals=self.counterfactuals,
+                spill_counterfactuals=self.spill_counterfactuals,
                 coordinates=self.coordinates,
                 parent_env=self.parent_env,
                 topfeat=self.topfeat,
@@ -226,6 +233,8 @@ class SpaceDataset:
                 node2id=self.node2id,
                 full_edge_list=self.full_edge_list,
                 full_treatment=self.full_treatment,
+                full_covariates=self.full_covariates,
+                full_outcome=self.full_outcome,
                 full_coordinates=self.full_coordinates,
             )
 
@@ -333,6 +342,13 @@ class SpaceEnv:
             key=lambda x: int(x.split("_")[-1]),
         )
         self.counterfactuals = data[cfcols].values
+        
+        # -- 3.5. spill counterfactuals (spill_Ycf) --
+        spill_cfcols = sorted(
+            data.columns[data.columns.str.startswith("spill_Y_synth_")],
+            key=lambda x: int(x.split("_")[-1]),
+        )
+        self.spill_counterfactuals = data[spill_cfcols].values
 
         # -- 4. treatment --
         self.treatment = data[self.metadata["treatment"]].values
@@ -364,6 +380,19 @@ class SpaceEnv:
         
         if "grid" in self.metadata["base_name"]:
             self.coordinates = np.array([list(map(int, k.split('_'))) for k in node2id.keys()])
+            from sci.algorithms.utils import get_k_hop_neighbors
+            node_list = list(graph.nodes())
+            nbrs = {node: get_k_hop_neighbors(graph, node, int(self.metadata["radius"])) for node in node_list}
+            nbr_counts = {node: len(neigh) for node, neigh in nbrs.items()}
+            max_count = max(nbr_counts.values())
+            self.max_nodes = [node for node, cnt in nbr_counts.items() if cnt == max_count]
+            
+            self.full_graph = self.graph.copy()
+            subgraph = self.graph.subgraph(self.max_nodes).copy()
+
+            # Create mapping from original node IDs to new consecutive IDs (0, 1, 2, ...)
+            old_to_new_mapping = {old_id: new_id for new_id, old_id in enumerate(self.max_nodes)}
+            self.graph = nx.relabel_nodes(subgraph, old_to_new_mapping) # Relabel the nodes
         else:
             import geopandas as gpd
             gdf = gpd.read_file(os.path.join(tgtdir, "map_df.geojson"))
@@ -405,7 +434,7 @@ class SpaceEnv:
         }
         
         self.topfeat = list(self.confounding_score["erf"].keys())
-        self.radius = self.metadata["radius"]
+        self.radius = int(self.metadata["radius"])
         self.node2id = node2id
 
     def make(
@@ -460,12 +489,13 @@ class SpaceEnv:
             cs["importance"][x] for x in miss_covars_cols
         )
 
-        return SpaceDataset(
+        dataset = SpaceDataset(
             treatment=self.treatment,
             covariates=obs_covars,
             missing_covariates=miss_covars,
             outcome=self.outcome,
             counterfactuals=self.counterfactuals,
+            spill_counterfactuals=self.spill_counterfactuals
             edges=self.edge_list,
             coordinates=self.coordinates,
             smoothness_score=miss_smoothness,
@@ -477,8 +507,15 @@ class SpaceEnv:
             node2id=self.node2id,
             full_edge_list=self.edge_list,
             full_treatment=self.treatment,
+            full_covariates=obs_covars,
+            full_outcome=self.outcome,
             full_coordinates=self.coordinates,
         )
+        
+        if "grid" in self.metadata["base_name"]:
+            return dataset[self.max_nodes]
+        else:
+            return dataset
 
     def make_all(self):
         """

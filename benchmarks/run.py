@@ -11,6 +11,7 @@ from pytorch_lightning import seed_everything
 from ray import tune
 
 import spacebench
+import sci
 from sci import SpaceEnv
 from spacebench.algorithms.datautils import spatial_train_test_split
 
@@ -46,7 +47,7 @@ def main(cfg: DictConfig) -> None:
 
     env_name = cfg.spaceenv
     env = SpaceEnv(env_name, dir="downloads")
-    print(env.coordinates)
+    # print(env.coordinates)
     train_ix, test_ix, _ = spatial_train_test_split(
         env.graph, **{**cfg.spatial_train_test_split, "buffer": cfg.spatial_train_test_split["buffer"] + env.radius if cfg.algo.use_interference else cfg.spatial_train_test_split["buffer"]}
     )
@@ -111,15 +112,15 @@ def main(cfg: DictConfig) -> None:
         effects = method.eval(full_dataset)
 
         # load evaluator
-        evaluator = spacebench.DatasetEvaluator(full_dataset)
-        eval_results = evaluator.eval(**effects)
-        eval_results = {k: eval_results.get(k, None) for k in ("ate", "erf", "ite")}
+        evaluator = sci.DatasetEvaluator(full_dataset)
+        eval_results = evaluator.eval(**effects, radius=method.)
+        eval_results = {k: eval_results.get(k, None) for k in ("ate", "erf", "ite", "spill")}
         eval_results["env"] = env_name
         eval_results["dataset_id"] = i
         eval_results["algo"] = cfg.algo.name
         eval_results["smoothness"] = full_dataset.smoothness_score
         eval_results["confounding"] = full_dataset.confounding_score
-        eval_results["timestamp"] = timestamp
+        eval_results["timestamp"] = timestamp 
         eval_results["binary"] = full_dataset.has_binary_treatment()
         
         eval_results["radius"] = full_dataset.radius

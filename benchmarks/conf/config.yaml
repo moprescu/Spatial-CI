@@ -29,8 +29,8 @@ algo:  # these config must be overwritten by algo/*.yaml
       gpu: 1
     tune_config:
       _target_: ray.tune.TuneConfig
-      num_samples: 15
-      max_concurrent_trials: ${concurrency}
+      num_samples: 1
+      # max_concurrent_trials: ${concurrency}
       scheduler:
         _target_: ray.tune.schedulers.ASHAScheduler
       mode: min

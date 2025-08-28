@@ -3,45 +3,149 @@
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
+import networkx as nx
 
 
-# UNet with multiple channels
 class UNet(nn.Module):
-    def __init__(self, n_channels, n_classes, bilinear=False):
+    def __init__(self, n_channels, n_classes, bilinear=False, radius=1, base_channels=16):
         super(UNet, self).__init__()
         self.n_channels = n_channels
         self.n_classes = n_classes
         self.bilinear = bilinear
-
-        self.inc = (DoubleConv(n_channels, 16))
-        self.down1 = (Down(16, 32))
-        self.down2 = (Down(32, 64))
-        self.down3 = (Down(64, 128))
+        self.radius = radius
+        self.base_channels = base_channels
+        self.input_size = 2 * radius + 1  # radius=1 -> 3x3, radius=2 -> 5x5, etc.
+        
+        # Calculate how many downsampling layers we can use based on input size
+        # Each down layer reduces size by 2x, so we need input_size >= 2^(n+1) to avoid 1x1 after n downs
+        # For safe upsampling, we need at least 2x2 feature maps
+        max_downs = max(0, int(torch.log2(torch.tensor(self.input_size / 2, dtype=torch.float32)).floor()))
+        self.n_downs = min(max_downs, 4)  # Cap at 4 as in original
+        
+        # For very small inputs, use no downsampling
+        if self.input_size <= 4:
+            self.n_downs = 0
+        
+        # Initial convolution
+        self.inc = DoubleConv(n_channels, base_channels)
+        
+        # Build downsampling path dynamically
+        self.downs = nn.ModuleList()
+        in_ch = base_channels
+        for i in range(self.n_downs):
+            out_ch = min(in_ch * 2, 256)  # Cap channels at 256
+            self.downs.append(Down(in_ch, out_ch))
+            in_ch = out_ch
+        
+        # Factor for bilinear upsampling
         factor = 2 if bilinear else 1
-        self.down4 = (Down(128, 256 // factor))
-        self.up1 = (Up(256, 128 // factor, bilinear))
-        self.up2 = (Up(128, 64 // factor, bilinear))
-        self.up3 = (Up(64, 32 // factor, bilinear))
-        self.up4 = (Up(32, 16, bilinear))
-        # instead of OutConv -> do global pooling + linear
+        
+        # Build upsampling path dynamically
+        self.ups = nn.ModuleList()
+        
+        # Only build upsampling layers if we have downsampling layers
+        if self.n_downs > 0:
+            # Store channel sizes from down path for proper skip connections
+            down_channels = [base_channels]  # Initial channel count
+            temp_ch = base_channels
+            for i in range(self.n_downs):
+                temp_ch = min(temp_ch * 2, 256)
+                down_channels.append(temp_ch)
+            
+            # Build up path in reverse
+            # Start with the deepest feature map
+            current_ch = down_channels[-1]  # Channels at bottom of U-Net
+            
+            for i in range(self.n_downs):
+                # Skip connection comes from the corresponding down layer
+                skip_ch = down_channels[-(i+2)]  # Skip connection channels
+                
+                # For your Up class:
+                # - x1 (current_ch) gets upsampled 
+                # - If bilinear: channels stay the same, so x1 becomes current_ch channels
+                # - If ConvTranspose: x1 becomes current_ch // 2 channels
+                # - Then concat with x2 (skip_ch channels)
+                # - Total after concat: current_ch + skip_ch (bilinear) or (current_ch//2) + skip_ch (transpose)
+                
+                if bilinear:
+                    concat_channels = current_ch + skip_ch
+                else:
+                    concat_channels = (current_ch // 2) + skip_ch
+                
+                # Output channels for this layer
+                if i == self.n_downs - 1:  # Last up layer
+                    out_ch = base_channels
+                else:
+                    out_ch = skip_ch  # Match the skip connection size
+                
+                self.ups.append(Up(concat_channels, out_ch, bilinear))
+                current_ch = out_ch
+        
+        # Global pooling + classification head
         self.head = nn.Sequential(
             nn.AdaptiveAvgPool2d(1),   # [B, C, H, W] -> [B, C, 1, 1]
             nn.Flatten(),              # [B, C, 1, 1] -> [B, C]
-            nn.Linear(16, n_classes)           # [B, 16] -> [B, 1]
+            nn.Linear(base_channels, n_classes)   # [B, base_channels] -> [B, n_classes]
         )
-
+    
     def forward(self, x):
-        x1 = self.inc(x)
-        x2 = self.down1(x1)
-        x3 = self.down2(x2)
-        x4 = self.down3(x3)
-        x5 = self.down4(x4)
-        x = self.up1(x5, x4)
-        x = self.up2(x, x3)
-        x = self.up3(x, x2)
-        x = self.up4(x, x1)
+        # Store original size
+        original_size = x.shape[-1]
+        
+        # Validate input size
+        expected_size = self.input_size
+        if x.shape[-1] != expected_size or x.shape[-2] != expected_size:
+            raise ValueError(f"Expected input size {expected_size}x{expected_size} for radius={self.radius}, "
+                           f"got {x.shape[-2]}x{x.shape[-1]}")
+        
+        # Calculate padding needed to make size divisible by 2^n_downs
+        pad_total = 0
+        if self.n_downs > 0:
+            # Find the smallest size >= input_size that's divisible by 2^n_downs
+            divisor = 2 ** self.n_downs
+            padded_size = ((self.input_size + divisor - 1) // divisor) * divisor
+            
+            # Calculate padding
+            pad_total = padded_size - self.input_size
+            pad_left = pad_total // 2
+            pad_right = pad_total - pad_left
+            pad_top = pad_total // 2  
+            pad_bottom = pad_total - pad_top
+            
+            # Apply padding
+            if pad_total > 0:
+                x = nn.functional.pad(x, [pad_left, pad_right, pad_top, pad_bottom], mode='reflect')
+        
+        # Initial convolution
+        features = [self.inc(x)]
+        
+        # Downsampling path
+        for down in self.downs:
+            features.append(down(features[-1]))
+        
+        # If no downsampling layers, just use the initial features
+        if self.n_downs == 0:
+            logits = self.head(features[0])
+            return logits
+        
+        # Start with the bottom-most feature
+        x = features[-1]
+        
+        # Upsampling path with skip connections
+        for i, up in enumerate(self.ups):
+            skip_idx = -(i + 2)  # Get corresponding skip connection
+            x = up(x, features[skip_idx])
+        
+        # Remove padding to restore original size
+        if pad_total > 0:
+            pad_left = pad_total // 2
+            pad_top = pad_total // 2
+            x = x[:, :, pad_top:pad_top+original_size, pad_left:pad_left+original_size]
+        
+        # Classification head
         logits = self.head(x)
         return logits
+
 
 
 ##############
@@ -67,7 +171,7 @@ class DoubleConv(nn.Module):
 class DoubleConvMultiChannel(nn.Module):
     """(convolution => [BN] => ReLU) * 2"""
     def __init__(self, in_channels, mid_channels, out_channels, p=0.1):
-        super(DoubleConv, self).__init__()
+        super(DoubleConvMultiChannel, self).__init__()
         self.double_conv = nn.Sequential(
             nn.Conv2d(in_channels, mid_channels, kernel_size=3, padding=1),
             nn.BatchNorm2d(mid_channels),
@@ -336,3 +440,22 @@ class GHead(nn.Module):
                 nn.init.xavier_uniform_(layer.weight)
                 nn.init.zeros_(layer.bias)
     
+    
+def get_k_hop_neighbors(graph, node, k):
+    """
+    Find all neighbors within k hops of a given node.
+    
+    Args:
+        graph: NetworkX graph object
+        node: The starting node
+        k: Maximum number of hops to consider
+    
+    Returns:
+        set: All nodes within k hops of the given node (excluding the node itself)
+    """
+    
+    # Get all nodes within k hops (including the starting node)
+    ego_subgraph = nx.ego_graph(graph, node, radius=k)
+    
+    # Return all nodes except the starting node itself
+    return set(ego_subgraph.nodes()) - {node}

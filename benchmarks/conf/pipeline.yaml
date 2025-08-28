@@ -37,6 +37,7 @@ algorithms:
     # - s2sls-lag1
     # - s2sls-lag2
     # - gmerror
+    # - deconfounder
   disc:
     # - dapsm
     # - spatial
@@ -46,4 +47,5 @@ algorithms:
     # - gcn
     # - s2sls-lag1
     # - s2sls-lag2
-    - gmerror_gpu
+    # - gmerror_gpu
+    - deconfounder
