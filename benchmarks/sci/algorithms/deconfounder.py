@@ -288,6 +288,7 @@ class deconfounder_grid(pl.LightningModule):
         self.log("train_treatment_loss", treatment_loss, on_epoch=True, prog_bar=True)
         self.log("train_kldiv_loss", kldiv_loss, on_epoch=True, prog_bar=True)
         self.log("train_outcome_loss", outcome_loss, on_epoch=True, prog_bar=True)
+        return loss
         
     def validation_step(self, batch, batch_idx):
         treatments, covariates, true_treatments, true_outcomes = batch
