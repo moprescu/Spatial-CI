@@ -2,15 +2,15 @@ defaults:
   - _self_
   - algo: ???
 
-global_seed: 123
+global_seeds: [0, 1, 2, 3, 4, 5, 6, 7, 8, 9]
 overwrite: false
-concurrency: 10
+concurrency: 30
 
 spatial_train_test_split:
   init_frac: 0.02
   levels: 1
   buffer: 1
-  seed: 0
+  # seed: 0
 
 spaceenv: climate_wfsmoke_minrty_disc  # must be a valid spaceenv
 logfile: benchmarks/results/${spaceenv}/${hydra:runtime.choices.algo}.jsonl
@@ -25,18 +25,22 @@ algo:  # these config must be overwritten by algo/*.yaml
   tune:  # ray tune resources, can override  in algo/*.yaml but not needed
     param_space: {}
     resources:
-      cpu: 4
-      gpu: 1
+      cpu: 2
+      gpu: ${oc.select:gpu_map.${algo.name},0}
     tune_config:
       _target_: ray.tune.TuneConfig
-      num_samples: 1
-      # max_concurrent_trials: ${concurrency}
+      num_samples: 30
+      max_concurrent_trials: ${concurrency}
       scheduler:
         _target_: ray.tune.schedulers.ASHAScheduler
       mode: min
     run_config:
       _target_: ray.air.RunConfig
       storage_path: benchmarks/ray_cache/${spaceenv}/${hydra:runtime.choices.algo}
+
+gpu_map:
+  deconfounder: 1
+  gcn: 1
 
 hydra:
   run:

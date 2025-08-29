@@ -381,8 +381,8 @@ class SpaceEnv:
         if "grid" in self.metadata["base_name"]:
             self.coordinates = np.array([list(map(int, k.split('_'))) for k in node2id.keys()])
             from sci.algorithms.utils import get_k_hop_neighbors
-            node_list = list(graph.nodes())
-            nbrs = {node: get_k_hop_neighbors(graph, node, int(self.metadata["radius"])) for node in node_list}
+            node_list = list(self.graph.nodes())
+            nbrs = {node: get_k_hop_neighbors(self.graph, node, int(self.metadata["radius"])) for node in node_list}
             nbr_counts = {node: len(neigh) for node, neigh in nbrs.items()}
             max_count = max(nbr_counts.values())
             self.max_nodes = [node for node, cnt in nbr_counts.items() if cnt == max_count]
@@ -433,7 +433,12 @@ class SpaceEnv:
             x: float(v) for x, v in self.metadata["spatial_scores"].items()
         }
         
-        self.topfeat = list(self.confounding_score["erf"].keys())
+        if "healthd" in self.metadata["base_name"]:
+            self.topfeat = ["gmet_mean_summer_sph", "cs_population_density"]
+        elif "pm25" in self.metadata["base_name"]:
+            self.topfeat = ["value_oc", "value_nh4"]
+        
+        # self.topfeat = list(self.confounding_score["erf"].keys())
         self.radius = int(self.metadata["radius"])
         self.node2id = node2id
 
@@ -486,7 +491,7 @@ class SpaceEnv:
         for k in ["erf", "ate", "ite"]:
             miss_confounding[k] = cs[k].get(missing_group, np.nan)
         miss_confounding["importance"] = max(
-            cs["importance"][x] for x in miss_covars_cols
+            cs["importance"].get(x, np.nan) for x in miss_covars_cols
         )
 
         dataset = SpaceDataset(
@@ -495,7 +500,7 @@ class SpaceEnv:
             missing_covariates=miss_covars,
             outcome=self.outcome,
             counterfactuals=self.counterfactuals,
-            spill_counterfactuals=self.spill_counterfactuals
+            spill_counterfactuals=self.spill_counterfactuals,
             edges=self.edge_list,
             coordinates=self.coordinates,
             smoothness_score=miss_smoothness,

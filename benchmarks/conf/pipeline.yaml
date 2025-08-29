@@ -2,9 +2,9 @@ logdir: benchmarks/results
 
 # make sure it is also compatible with the cluster.yaml
 # and the config file at benchmarks/run/config.yaml
-concurrency: 10
+concurrency: 30
 mem_mb: 4000
-cpus_per_task: 2
+cpus_per_task: 80
 overwrite: false
 
 spaceenvs:
@@ -18,13 +18,12 @@ spaceenvs:
     # - cdcsvi_nohsdp_poverty_cont
     - 
   disc:
-    # - county_dmgrcs_election_disc
-    # - climate_wfsmoke_minrty_disc
-    # - cdcsvi_nohsdp_poverty_disc
     # - healthdgraph_rad1_pollutn_mortality_disc
     # - healthdgraph_rad2_pollutn_mortality_disc
     # - healthdgrid_rad1_pollutn_mortality_disc
-    - healthdgrid_rad2_pollutn_mortality_disc
+    # - healthdgrid_rad2_pollutn_mortality_disc
+    - pm25grid_rad1_so4_pm_disc
+    # - pm25grid_rad2_so4_pm_disc
 
 
 algorithms:
@@ -39,13 +38,8 @@ algorithms:
     # - gmerror
     # - deconfounder
   disc:
-    # - dapsm
+    - dapsm
     # - spatial
     # - spatialplus
-    # - xgboost
-    # - ols
     # - gcn
-    # - s2sls-lag1
-    # - s2sls-lag2
-    # - gmerror_gpu
-    - deconfounder
+    # - deconfounder

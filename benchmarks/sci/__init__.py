@@ -1,6 +1,7 @@
 from sci.env import SpaceEnv, SpaceDataset
 from sci.datamaster import DataMaster
-
+from sci.eval import DatasetEvaluator, EnvEvaluator
+import sci.algorithms.datautils
 
 def _warn_user():
     if not getattr(_warn_user, "has_warned", False):

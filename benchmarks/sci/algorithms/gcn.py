@@ -9,7 +9,7 @@ from torch.optim import Adam
 from torch_geometric.nn import GCNConv
 
 from spacebench.algorithms import SpaceAlgo
-from spacebench.algorithms.datautils import graph_data_loader
+from sci.algorithms.datautils import graph_data_loader
 from sci.env import SpaceDataset
 from spacebench.log import LOGGER
 
@@ -89,7 +89,7 @@ class GCN(SpaceAlgo):
             [LearningRateFinder(min_lr=1e-5, max_lr=1.0)] if self.auto_lr else []
         )
         self.trainer = pl.Trainer(
-            accelerator="cpu",
+            accelerator="gpu",
             enable_checkpointing=False,
             logger=False,
             gradient_clip_val=10.0,

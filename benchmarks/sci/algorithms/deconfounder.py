@@ -288,6 +288,8 @@ class deconfounder_grid(pl.LightningModule):
         self.log("train_treatment_loss", treatment_loss, on_epoch=True, prog_bar=True)
         self.log("train_kldiv_loss", kldiv_loss, on_epoch=True, prog_bar=True)
         self.log("train_outcome_loss", outcome_loss, on_epoch=True, prog_bar=True)
+        self.log("beta", beta, on_epoch=True)
+        
         return loss
         
     def validation_step(self, batch, batch_idx):
@@ -519,9 +521,8 @@ class Deconfounder(SpaceAlgo):
             graph, 
             init_frac= 0.02, 
             levels = 1, 
-            buffer = 1 + self.impl_kwargs["radius"], 
-            seed = 0, 
-            radius = self.impl_kwargs["radius"],
+            buffer = 1 + max(dataset.radius, self.impl_kwargs["radius"]), 
+            radius = max(dataset.radius, self.impl_kwargs["radius"]),
         )
         self.train_ix = train_ix
         self.test_ix = test_ix
@@ -554,12 +555,20 @@ class Deconfounder(SpaceAlgo):
             LearningRateMonitor(logging_interval="step"),
             RichProgressBar()
         ]
+        
+        wandb_logger = WandbLogger(
+            project="cvae-treatment-model",  # Your project name
+            name="cvae-experiment",          # Run name
+            log_model=True,                  # Log model checkpoints
+            save_dir="./wandb_logs",
+            config=self.impl_kwargs,
+        )
 
         self.trainer = pl.Trainer(
             accelerator="gpu" if self.use_gpu else "cpu",
             devices=1,
             enable_checkpointing=True,
-            logger=True,
+            logger=wandb_logger,
             gradient_clip_val=1.0,
             enable_progress_bar=True,
             callbacks=callbacks,
@@ -653,7 +662,6 @@ def spatial_train_test_split_radius(
     init_frac: float,
     levels: int,
     buffer: int = 0,
-    seed: int | None = None,
     radius: int = 1,
 ) -> tuple[list, list, list]:
     """Split restricted to nodes with max neighbors."""
@@ -681,7 +689,7 @@ def spatial_train_test_split_radius(
 
     # pick tuning centroids from max nodes
     num_tuning_centroids = int(init_frac * n)
-    rng = np.random.default_rng(seed)
+    rng = np.random
     tuning_nodes = rng.choice(node_list, size=num_tuning_centroids, replace=False)
     tuning_nodes = set(tuning_nodes)
 

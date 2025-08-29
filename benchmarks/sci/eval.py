@@ -34,7 +34,6 @@ class DatasetEvaluator:
         ite: np.ndarray | None = None,
         erf: np.ndarray | None = None,
         spill: np.ndarray | None = None,
-        radius: int | None = None,
     ) -> dict[str, float]:
         errors = {}
         cf_true = self.dataset.counterfactuals[:, self.mask]
