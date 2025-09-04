@@ -26,6 +26,7 @@ develop-eggs/
 dist/
 downloads/
 checkpoints/
+wandb_logs/
 eggs/
 .eggs/
 lib/
