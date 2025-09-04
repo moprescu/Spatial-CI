@@ -27,6 +27,7 @@ dist/
 downloads/
 checkpoints/
 wandb_logs/
+lightning_logs/
 eggs/
 .eggs/
 lib/
