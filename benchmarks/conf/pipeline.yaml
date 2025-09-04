@@ -9,19 +9,16 @@ overwrite: false
 
 spaceenvs:
   cont:
-    # - climate_relhum_wfsmoke_cont
-    # - healthd_hhinco_mortality_cont
-    # - healthd_pollutn_mortality_cont
-    # - county_educatn_election_cont
-    # - county_phyactiv_lifexpcy_cont
-    # - cdcsvi_limteng_hburdic_cont
-    # - cdcsvi_nohsdp_poverty_cont
     - 
   disc:
     # - healthdgraph_rad1_pollutn_mortality_disc
     # - healthdgraph_rad2_pollutn_mortality_disc
+    
+    # - small_healthdgrid_rad1_pollutn_mortality_disc
+    
     # - healthdgrid_rad1_pollutn_mortality_disc
     # - healthdgrid_rad2_pollutn_mortality_disc
+    
     - pm25grid_rad1_so4_pm_disc
     # - pm25grid_rad2_so4_pm_disc
 
@@ -38,8 +35,12 @@ algorithms:
     # - gmerror
     # - deconfounder
   disc:
-    - dapsm
+    # - dapsm
     # - spatial
     # - spatialplus
     # - gcn
-    # - deconfounder
+    # - s2sls-lag1
+    - deconfounder_r0
+    # - deconfounder_r1
+    # - deconfounder_r2
+

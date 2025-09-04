@@ -54,7 +54,7 @@ def tps_pred(
         torch.Tensor: Predicted values of length n.
     """
     Phi = compute_phi(coords, cp_coords)
-    intercept = torch.ones((coords.shape[0], 1))
+    intercept = torch.ones((coords.shape[0], 1), device=coords.device)
     A = torch.cat([intercept, coords, covars, Phi], dim=1)
     return A @ params
 
@@ -153,7 +153,7 @@ def tps_opt(
     k = cp_coords.shape[0]
 
     # Initialization of params
-    params = torch.zeros(1 + d + p + k, requires_grad=True)
+    params = torch.zeros(1 + d + p + k, requires_grad=True, device=y.device)
     opt = torch.optim.Adam([params], lr=lr)
     sched = torch.optim.lr_scheduler.ReduceLROnPlateau(
         opt,
@@ -216,28 +216,29 @@ class Spatial(SpaceAlgo):
         self.max_iter = max_iter
         self.lam = lam
         self.spatial_split_kwargs = spatial_split_kwargs
+        self.device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
 
     def fit(self, dataset: SpaceDataset):
         if self.spatial_split_kwargs is not None:
             train_ix, _, _ = spatial_train_test_split(
                 nx.from_edgelist(dataset.edges), **self.spatial_split_kwargs
             )
-            self.mask = torch.zeros(dataset.size())
+            self.mask = torch.zeros(dataset.size()).to(self.device)
             self.mask[train_ix] = torch.tensor(1.0)
         else:
             self.mask = None
 
-        coords = torch.FloatTensor(dataset.coordinates)
-        covars = torch.FloatTensor(dataset.covariates)
-        y = torch.FloatTensor(dataset.outcome)
-        t = torch.FloatTensor(dataset.treatment)
+        coords = torch.FloatTensor(dataset.coordinates).to(self.device)
+        covars = torch.FloatTensor(dataset.covariates).to(self.device)
+        y = torch.FloatTensor(dataset.outcome).to(self.device)
+        t = torch.FloatTensor(dataset.treatment).to(self.device)
         inputs = torch.cat([t[:, None], covars], dim=1)
 
         # sample control points
         k = min(self.k, dataset.size())
         self.cp_idx = torch.LongTensor(
             np.random.choice(dataset.size(), k, replace=False)
-        )
+        ).to(self.device)
         self.cp_coords = coords[self.cp_idx]
 
         # standardize
@@ -260,7 +261,7 @@ class Spatial(SpaceAlgo):
             mask=self.mask,
         )
         # 0 coef is intercept, 1,2 are for coords, 3 is treatment
-        self.t_coef = (self.params[3] * self.y_std / self.inputs_std[0]).item()
+        self.t_coef = (self.params[3] * self.y_std / self.inputs_std[0]).cpu().item()
 
     def eval(self, dataset: SpaceDataset):
         ite = [
@@ -280,10 +281,10 @@ class Spatial(SpaceAlgo):
         return ["ate", "erf", "ite"]
 
     def tune_metric(self, dataset: SpaceDataset) -> float:
-        coords = torch.FloatTensor(dataset.coordinates)
-        covars = torch.FloatTensor(dataset.covariates)
-        y = torch.FloatTensor(dataset.outcome)
-        t = torch.FloatTensor(dataset.treatment)
+        coords = torch.FloatTensor(dataset.coordinates).to(self.device)
+        covars = torch.FloatTensor(dataset.covariates).to(self.device)
+        y = torch.FloatTensor(dataset.outcome).to(self.device)
+        t = torch.FloatTensor(dataset.treatment).to(self.device)
         inputs = torch.cat([t[:, None], covars], dim=1)
         coords = (coords - self.coords_mu) / self.coords_std
         inputs = (inputs - self.inputs_mu) / self.inputs_std
@@ -298,7 +299,7 @@ class Spatial(SpaceAlgo):
             LOGGER.warning("No mask specified for the tune metric. Using full dataset.")
             loss = loss.mean()
 
-        return loss.item()
+        return loss.cpu().item()
 
 
 class SpatialPlus(SpaceAlgo):
@@ -332,20 +333,21 @@ class SpatialPlus(SpaceAlgo):
         self.lam_t = lam_t
         self.lam_y = lam_y
         self.spatial_split_kwargs = spatial_split_kwargs
+        self.device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
 
     def fit(self, dataset: SpaceDataset):
         if self.spatial_split_kwargs is not None:
             train_ix, _, _ = spatial_train_test_split(
                 nx.from_edgelist(dataset.edges), **self.spatial_split_kwargs
             )
-            self.mask = torch.zeros(dataset.size())
+            self.mask = torch.zeros(dataset.size()).to(self.device)
             self.mask[train_ix] = torch.tensor(1.0)
         else:
             self.mask = None
 
-        coords = torch.FloatTensor(dataset.coordinates)
-        covars = torch.FloatTensor(dataset.covariates)
-        t = torch.FloatTensor(dataset.treatment)
+        coords = torch.FloatTensor(dataset.coordinates).to(self.device)
+        covars = torch.FloatTensor(dataset.covariates).to(self.device)
+        t = torch.FloatTensor(dataset.treatment).to(self.device)
         self.t_mu, self.t_std = t.mean(), t.std()
 
         # standardize t if not binary treatment
@@ -356,7 +358,7 @@ class SpatialPlus(SpaceAlgo):
         k = min(self.k, dataset.size())
         self.cp_idx = torch.LongTensor(
             sorted(np.random.choice(dataset.size(), k, replace=False))
-        )
+        ).to(self.device)
         self.cp_coords = coords[self.cp_idx]
 
         # standardize
@@ -379,7 +381,7 @@ class SpatialPlus(SpaceAlgo):
         )
 
         # predict
-        y = torch.FloatTensor(dataset.outcome)
+        y = torch.FloatTensor(dataset.outcome).to(self.device)
         t_pred = tps_pred(coords, self.cp_coords, covars, self.t_params)
         if dataset.has_binary_treatment():
             t_pred = torch.sigmoid(t_pred)
@@ -390,7 +392,7 @@ class SpatialPlus(SpaceAlgo):
         self.y_mu, self.y_std = y.mean(), y.std()
         y = (y - self.y_mu) / self.y_std
         inputs = torch.cat(
-            [t_resid[:, None], torch.FloatTensor(dataset.covariates)], dim=1
+            [t_resid[:, None], torch.FloatTensor(dataset.covariates).to(self.device)], dim=1
         )
         self.inputs_mu, self.inputs_std = inputs.mean(0), inputs.std(0)
         inputs = (inputs - self.inputs_mu) / self.inputs_std
@@ -406,7 +408,7 @@ class SpatialPlus(SpaceAlgo):
         )
 
         # 0 coef is intercept, 1,2 are for coords, 3 is treatment
-        self.t_coef = (self.y_params[3] * self.y_std / self.t_mu).item()
+        self.t_coef = (self.y_params[3] * self.y_std / self.t_mu).cpu().item()
 
     def eval(self, dataset: SpaceDataset):
         ite = [
@@ -432,10 +434,10 @@ class SpatialPlus(SpaceAlgo):
         else:
             tune_mask = 1.0 - self.mask
 
-        coords = torch.FloatTensor(dataset.coordinates)
-        covars = torch.FloatTensor(dataset.covariates)
-        y = torch.FloatTensor(dataset.outcome)
-        t = torch.FloatTensor(dataset.treatment)
+        coords = torch.FloatTensor(dataset.coordinates).to(self.device)
+        covars = torch.FloatTensor(dataset.covariates).to(self.device)
+        y = torch.FloatTensor(dataset.outcome).to(self.device)
+        t = torch.FloatTensor(dataset.treatment).to(self.device)
         covars = (covars - self.covars_mu) / self.covars_std
         coords = (coords - self.coords_mu) / self.coords_std
 
@@ -459,7 +461,7 @@ class SpatialPlus(SpaceAlgo):
         t_resid = t - t_pred
 
         inputs = torch.cat(
-            [t_resid[:, None], torch.FloatTensor(dataset.covariates)], dim=1
+            [t_resid[:, None], torch.FloatTensor(dataset.covariates).to(self.device)], dim=1
         )
         inputs = (inputs - self.inputs_mu) / self.inputs_std
         y = (y - self.y_mu) / self.y_std
@@ -473,7 +475,7 @@ class SpatialPlus(SpaceAlgo):
             mask=tune_mask,
         )
 
-        return t_loss.item() + y_loss.item()
+        return t_loss.cpu().item() + y_loss.cpu().item()
 
 
 if __name__ == "__main__":

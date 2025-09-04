@@ -25,11 +25,11 @@ algo:  # these config must be overwritten by algo/*.yaml
   tune:  # ray tune resources, can override  in algo/*.yaml but not needed
     param_space: {}
     resources:
-      cpu: 2
+      cpu: 4
       gpu: ${oc.select:gpu_map.${algo.name},0}
     tune_config:
       _target_: ray.tune.TuneConfig
-      num_samples: 30
+      num_samples: 10
       max_concurrent_trials: ${concurrency}
       scheduler:
         _target_: ray.tune.schedulers.ASHAScheduler
@@ -39,8 +39,12 @@ algo:  # these config must be overwritten by algo/*.yaml
       storage_path: benchmarks/ray_cache/${spaceenv}/${hydra:runtime.choices.algo}
 
 gpu_map:
-  deconfounder: 1
+  deconfounder_r0: 1
+  deconfounder_r1: 1
+  deconfounder_r2: 1
   gcn: 1
+  spatial: 1
+  spatialplus: 1
 
 hydra:
   run:

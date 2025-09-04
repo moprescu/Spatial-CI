@@ -14,137 +14,125 @@ class UNet(nn.Module):
         self.bilinear = bilinear
         self.radius = radius
         self.base_channels = base_channels
-        self.input_size = 2 * radius + 1  # radius=1 -> 3x3, radius=2 -> 5x5, etc.
+        self.input_size = 2 * radius + 1
         
-        # Calculate how many downsampling layers we can use based on input size
-        # Each down layer reduces size by 2x, so we need input_size >= 2^(n+1) to avoid 1x1 after n downs
-        # For safe upsampling, we need at least 2x2 feature maps
+        # Calculate downsampling layers
         max_downs = max(0, int(torch.log2(torch.tensor(self.input_size / 2, dtype=torch.float32)).floor()))
-        self.n_downs = min(max_downs, 4)  # Cap at 4 as in original
+        self.n_downs = min(max_downs, 4)
         
-        # For very small inputs, use no downsampling
         if self.input_size <= 4:
             self.n_downs = 0
         
         # Initial convolution
-        self.inc = DoubleConv(n_channels, base_channels)
+        self.inc = DoubleConv(n_channels, base_channels, radius=radius)
         
-        # Build downsampling path dynamically
+        # Downsampling path - track actual channel counts
         self.downs = nn.ModuleList()
+        self.down_channels = [base_channels]  # Start with inc output channels
+        
         in_ch = base_channels
         for i in range(self.n_downs):
-            out_ch = min(in_ch * 2, 256)  # Cap channels at 256
+            out_ch = min(in_ch * 2, 256)
             self.downs.append(Down(in_ch, out_ch))
+            self.down_channels.append(out_ch)
             in_ch = out_ch
         
-        # Factor for bilinear upsampling
-        factor = 2 if bilinear else 1
-        
-        # Build upsampling path dynamically
+        # Upsampling path
         self.ups = nn.ModuleList()
         
-        # Only build upsampling layers if we have downsampling layers
         if self.n_downs > 0:
-            # Store channel sizes from down path for proper skip connections
-            down_channels = [base_channels]  # Initial channel count
-            temp_ch = base_channels
+            # Build upsampling layers
+            # Start from the deepest layer and work up
             for i in range(self.n_downs):
-                temp_ch = min(temp_ch * 2, 256)
-                down_channels.append(temp_ch)
-            
-            # Build up path in reverse
-            # Start with the deepest feature map
-            current_ch = down_channels[-1]  # Channels at bottom of U-Net
-            
-            for i in range(self.n_downs):
-                # Skip connection comes from the corresponding down layer
-                skip_ch = down_channels[-(i+2)]  # Skip connection channels
+                # Current decoder feature channels (from previous up layer or bottom)
+                if i == 0:
+                    current_decoder_ch = self.down_channels[-1]  # Bottom of U-Net
+                else:
+                    current_decoder_ch = self.down_channels[-(i+1)]  # Previous up layer output
                 
-                # For your Up class:
-                # - x1 (current_ch) gets upsampled 
-                # - If bilinear: channels stay the same, so x1 becomes current_ch channels
-                # - If ConvTranspose: x1 becomes current_ch // 2 channels
-                # - Then concat with x2 (skip_ch channels)
-                # - Total after concat: current_ch + skip_ch (bilinear) or (current_ch//2) + skip_ch (transpose)
+                # Skip connection channels
+                skip_ch = self.down_channels[-(i+2)]
+                
+                # Calculate what Up module should produce
+                if i == self.n_downs - 1:  # Last up layer
+                    target_out_ch = base_channels
+                else:
+                    target_out_ch = skip_ch
                 
                 if bilinear:
-                    concat_channels = current_ch + skip_ch
+                    # For bilinear: after upsampling we have current_decoder_ch channels
+                    # After concat with skip: current_decoder_ch + skip_ch
+                    total_after_concat = current_decoder_ch + skip_ch
+                    self.ups.append(Up(total_after_concat, target_out_ch, bilinear=True))
                 else:
-                    concat_channels = (current_ch // 2) + skip_ch
-                
-                # Output channels for this layer
-                if i == self.n_downs - 1:  # Last up layer
-                    out_ch = base_channels
-                else:
-                    out_ch = skip_ch  # Match the skip connection size
-                
-                self.ups.append(Up(concat_channels, out_ch, bilinear))
-                current_ch = out_ch
+                    # For ConvTranspose2d: we need to be more careful
+                    # The Up module will:
+                    # 1. Take current_decoder_ch and ConvTranspose to current_decoder_ch // 2
+                    # 2. Concat with skip_ch: (current_decoder_ch // 2) + skip_ch
+                    # 3. DoubleConv to target_out_ch
+                    
+                    total_after_concat = (current_decoder_ch // 2) + skip_ch
+                    
+                    # Create a custom Up that knows the decoder channels
+                    up_module = Up.__new__(Up)
+                    up_module.__init__(total_after_concat, target_out_ch, bilinear=False)
+                    # Override the ConvTranspose2d with correct input channels
+                    up_module.up = nn.ConvTranspose2d(current_decoder_ch, current_decoder_ch // 2, kernel_size=2, stride=2)
+                    
+                    self.ups.append(up_module)
         
-        # Global pooling + classification head
+        # Classification head
         self.head = nn.Sequential(
-            nn.AdaptiveAvgPool2d(1),   # [B, C, H, W] -> [B, C, 1, 1]
-            nn.Flatten(),              # [B, C, 1, 1] -> [B, C]
-            nn.Linear(base_channels, n_classes)   # [B, base_channels] -> [B, n_classes]
+            nn.AdaptiveAvgPool2d(1),
+            nn.Flatten(),
+            nn.Linear(base_channels, n_classes)
         )
     
     def forward(self, x):
-        # Store original size
         original_size = x.shape[-1]
-        
-        # Validate input size
         expected_size = self.input_size
+        
         if x.shape[-1] != expected_size or x.shape[-2] != expected_size:
             raise ValueError(f"Expected input size {expected_size}x{expected_size} for radius={self.radius}, "
                            f"got {x.shape[-2]}x{x.shape[-1]}")
         
-        # Calculate padding needed to make size divisible by 2^n_downs
+        # Padding for downsampling
         pad_total = 0
         if self.n_downs > 0:
-            # Find the smallest size >= input_size that's divisible by 2^n_downs
             divisor = 2 ** self.n_downs
             padded_size = ((self.input_size + divisor - 1) // divisor) * divisor
-            
-            # Calculate padding
             pad_total = padded_size - self.input_size
-            pad_left = pad_total // 2
-            pad_right = pad_total - pad_left
-            pad_top = pad_total // 2  
-            pad_bottom = pad_total - pad_top
             
-            # Apply padding
             if pad_total > 0:
+                pad_left = pad_total // 2
+                pad_right = pad_total - pad_left
+                pad_top = pad_total // 2
+                pad_bottom = pad_total - pad_top
                 x = nn.functional.pad(x, [pad_left, pad_right, pad_top, pad_bottom], mode='reflect')
         
-        # Initial convolution
+        # Encoder path - store all features for skip connections
         features = [self.inc(x)]
         
-        # Downsampling path
         for down in self.downs:
             features.append(down(features[-1]))
         
-        # If no downsampling layers, just use the initial features
         if self.n_downs == 0:
-            logits = self.head(features[0])
-            return logits
+            return self.head(features[0])
         
-        # Start with the bottom-most feature
-        x = features[-1]
+        # Decoder path
+        x = features[-1]  # Start with deepest features
         
-        # Upsampling path with skip connections
         for i, up in enumerate(self.ups):
-            skip_idx = -(i + 2)  # Get corresponding skip connection
-            x = up(x, features[skip_idx])
+            skip_features = features[-(i+2)]  # Get corresponding skip connection
+            x = up(x, skip_features)
         
-        # Remove padding to restore original size
+        # Remove padding
         if pad_total > 0:
             pad_left = pad_total // 2
             pad_top = pad_total // 2
             x = x[:, :, pad_top:pad_top+original_size, pad_left:pad_left+original_size]
         
-        # Classification head
-        logits = self.head(x)
-        return logits
+        return self.head(x)
 
 
 
@@ -152,39 +140,72 @@ class UNet(nn.Module):
 # UNet Utils #
 ##############
 class DoubleConv(nn.Module):
-    """(convolution => [BN] => ReLU) * 2"""
-    def __init__(self, in_channels, out_channels, p=0.1):
+    """(convolution => [Norm] => ReLU) * 2
+       Uses BatchNorm if radius != 0, otherwise no normalization.
+    """
+    def __init__(self, in_channels, out_channels, p=0.1, radius=1):
         super(DoubleConv, self).__init__()
-        self.double_conv = nn.Sequential(
-            nn.Conv2d(in_channels, out_channels, kernel_size=3, padding=1),
-            nn.BatchNorm2d(out_channels),
-            nn.ReLU(inplace=True),
-            #nn.Dropout(p),
-            nn.Conv2d(out_channels, out_channels, kernel_size=3, padding=1),
-            nn.BatchNorm2d(out_channels),
-            nn.ReLU(inplace=True)
-        )
+
+        def maybe_norm(channels):
+            if radius == 0:
+                return None   # no normalization
+            else:
+                return nn.BatchNorm2d(channels)
+
+        layers = [
+            nn.Conv2d(in_channels, out_channels, kernel_size=3, padding=1)
+        ]
+        norm = maybe_norm(out_channels)
+        if norm is not None:
+            layers.append(norm)
+        layers.append(nn.ReLU(inplace=True))
+        # layers.append(nn.Dropout(p))
+
+        layers.append(nn.Conv2d(out_channels, out_channels, kernel_size=3, padding=1))
+        norm = maybe_norm(out_channels)
+        if norm is not None:
+            layers.append(norm)
+        layers.append(nn.ReLU(inplace=True))
+
+        self.double_conv = nn.Sequential(*layers)
 
     def forward(self, x):
         return self.double_conv(x)
 
 class DoubleConvMultiChannel(nn.Module):
-    """(convolution => [BN] => ReLU) * 2"""
-    def __init__(self, in_channels, mid_channels, out_channels, p=0.1):
+    """(convolution => [Norm] => ReLU) * 2
+       Uses BatchNorm if radius != 0, otherwise InstanceNorm.
+    """
+    def __init__(self, in_channels, mid_channels, out_channels, p=0.1, radius=1):
         super(DoubleConvMultiChannel, self).__init__()
-        self.double_conv = nn.Sequential(
-            nn.Conv2d(in_channels, mid_channels, kernel_size=3, padding=1),
-            nn.BatchNorm2d(mid_channels),
-            nn.ReLU(inplace=True),
-            #nn.Dropout(p),
-            nn.Conv2d(mid_channels, out_channels, kernel_size=3, padding=1),
-            nn.BatchNorm2d(out_channels),
-            nn.ReLU(inplace=True)
-        )
+
+        def maybe_norm(channels):
+            if radius == 0:
+                return None   # no normalization
+            else:
+                return nn.BatchNorm2d(channels)
+            
+        layers = [
+            nn.Conv2d(in_channels, mid_channels, kernel_size=3, padding=1)
+        ]
+        norm = maybe_norm(mid_channels)
+        if norm is not None:
+            layers.append(norm)
+        layers.append(nn.ReLU(inplace=True))
+        # layers.append(nn.Dropout(p))
+
+        layers.append(nn.Conv2d(mid_channels, out_channels, kernel_size=3, padding=1))
+        norm = maybe_norm(out_channels)
+        if norm is not None:
+            layers.append(norm)
+        layers.append(nn.ReLU(inplace=True))
+
+        self.double_conv = nn.Sequential(*layers)
 
     def forward(self, x):
         return self.double_conv(x)
-    
+
+
 class Down(nn.Module):
     """Downscaling with maxpool then double conv"""
 
@@ -208,9 +229,13 @@ class Up(nn.Module):
         # if bilinear, use the normal convolutions to reduce the number of channels
         if bilinear:
             self.up = nn.Upsample(scale_factor=2, mode='bilinear', align_corners=True)
-            self.conv = DoubleConv(in_channels, out_channels, in_channels // 2)
+            self.conv = DoubleConv(in_channels, out_channels)
         else:
-            self.up = nn.ConvTranspose2d(in_channels, in_channels // 2, kernel_size=2, stride=2)
+            # The in_channels here is the total after concatenation
+            # We need to separate the decoder channels from skip channels
+            # Decoder channels = skip channels (from how UNet is structured)
+            decoder_channels = in_channels // 2  # Rough estimate, will be corrected
+            self.up = nn.ConvTranspose2d(decoder_channels, decoder_channels // 2, kernel_size=2, stride=2)
             self.conv = DoubleConv(in_channels, out_channels)
 
     def forward(self, x1, x2):
@@ -221,9 +246,6 @@ class Up(nn.Module):
 
         x1 = F.pad(x1, [diffX // 2, diffX - diffX // 2,
                         diffY // 2, diffY - diffY // 2])
-        # if you have padding issues, see
-        # https://github.com/HaiyongJiang/U-Net-Pytorch-Unstructured-Buggy/commit/0e854509c2cea854e247a9c615f175f76fbb2e3a
-        # https://github.com/xiaopeng-liao/Pytorch-UNet/commit/8ebac70e633bac59fc22bb5195e513d5832fb3bd
         x = torch.cat([x2, x1], dim=1)
         return self.conv(x)
 

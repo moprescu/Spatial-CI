@@ -90,6 +90,7 @@ class GCN(SpaceAlgo):
         )
         self.trainer = pl.Trainer(
             accelerator="gpu",
+            devices=1,
             enable_checkpointing=False,
             logger=False,
             gradient_clip_val=10.0,

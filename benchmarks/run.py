@@ -42,8 +42,8 @@ def main(cfg: DictConfig) -> None:
         LOGGER.info(f"Cleaning ray path {raydir}")
         shutil.rmtree(raydir)
 
-    env_name = cfg.spaceenv
-    env = SpaceEnv(env_name, dir="downloads")
+    env_name = cfg.spaceenv 
+    env = SpaceEnv(env_name, dir="downloads", algo_rad=0 if not cfg.algo.use_interference else cfg.algo.method.radius)
     # print(env.coordinates)
         
     for gseed in cfg.global_seeds:

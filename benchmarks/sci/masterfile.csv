@@ -3,6 +3,8 @@ healthdgraph_rad1_pollutn_mortality_disc,binary,Air Pollution and Mortality
 healthdgraph_rad2_pollutn_mortality_disc,binary,Air Pollution and Mortality
 healthdgrid_rad1_pollutn_mortality_disc,binary,Air Pollution and Mortality
 healthdgrid_rad2_pollutn_mortality_disc,binary,Air Pollution and Mortality
+small_healthdgrid_rad1_pollutn_mortality_disc,binary,Air Pollution and Mortality
+small_healthdgrid_rad2_pollutn_mortality_disc,binary,Air Pollution and Mortality
 pm25graph_rad1_so4_pm_disc,binary,Particulate matter composition
 pm25graph_rad2_so4_pm_disc,binary,Particulate matter composition
 pm25grid_rad1_so4_pm_disc,binary,Particulate matter composition

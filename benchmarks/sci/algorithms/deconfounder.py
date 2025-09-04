@@ -9,6 +9,8 @@ from pytorch_lightning.callbacks import (
     LearningRateMonitor,
     RichProgressBar
 )
+from pytorch_lightning.loggers import WandbLogger
+
 from torch.utils.data import Dataset, DataLoader
 from sklearn.preprocessing import StandardScaler
 
@@ -18,6 +20,7 @@ import networkx as nx
 from sci import SpaceDataset
 from spacebench.algorithms import SpaceAlgo
 from spacebench.log import LOGGER
+import os
 
 class InterferenceAwareDeconfounder_Grid(nn.Module):
     def __init__(
@@ -65,7 +68,7 @@ class InterferenceAwareDeconfounder_Grid(nn.Module):
         # Encoder: Two 3x3 convolutions over radius-r patch
         self.enc_mid_chan = encoder_conv1
         self.enc_out_chan = encoder_conv2
-        self.encoder_conv = DoubleConvMultiChannel(self.encoder_input_dim, self.enc_mid_chan, self.enc_out_chan)
+        self.encoder_conv = DoubleConvMultiChannel(self.encoder_input_dim, self.enc_mid_chan, self.enc_out_chan, radius=self.radius)
         self.encoder_pool = encoder_pool
         
         # Encoder output processing including covariates
@@ -262,6 +265,7 @@ class deconfounder_grid(pl.LightningModule):
             bilinear=self.bilinear,
             unet_base_chan=self.unet_base_chan
         )
+        self.model = torch.compile(self.model, mode="reduce-overhead")
         
         self.weight_decay = weight_decay
         self.lr = lr
@@ -269,6 +273,8 @@ class deconfounder_grid(pl.LightningModule):
         self.beta_epoch_max = beta_epoch_max
         self.gamma = gamma
         self.epochs = epochs
+        self.num_samples = 100
+        self.n_pixels = self.model.patch_size * self.model.patch_size
         
     def predict_step(self, batch, batch_idx):
         treatments, covariates, true_treatments, true_outcomes = batch
@@ -300,11 +306,90 @@ class deconfounder_grid(pl.LightningModule):
         # Combined objective
         beta = min(self.beta_max, self.current_epoch * (self.beta_max / self.beta_epoch_max))
         loss = treatment_loss + beta * kldiv_loss + self.gamma * outcome_loss
+        max_loss = treatment_loss + self.beta_max * kldiv_loss + self.gamma * outcome_loss
         
         self.log("val_loss", loss, on_epoch=True, prog_bar=True)
+        self.log("val_max_loss", max_loss, on_epoch=True, prog_bar=True)
         self.log("val_treatment_loss", treatment_loss, on_epoch=True, prog_bar=True)
         self.log("val_kldiv_loss", kldiv_loss, on_epoch=True, prog_bar=True)
         self.log("val_outcome_loss", outcome_loss, on_epoch=True, prog_bar=True)
+        
+        # Predictive checks implementation - vectorized
+        batch_size = covariates.size(0)
+
+        # Compute test statistic for true treatments: T(a) = E_Z[log p(a|X,Z)]
+        # Sample all z_s at once: [num_samples, batch_size, z_dim]
+        z_s = self.model.reparameterize(
+            mu.unsqueeze(0).expand(self.num_samples, -1, -1),
+            logvar.unsqueeze(0).expand(self.num_samples, -1, -1)
+        ).view(-1, mu.size(-1))  # [num_samples * batch_size, z_dim]
+
+        # Expand covariates to match: [num_samples * batch_size, cov_dim]
+        covariates_expanded = covariates.reshape(batch_size, -1).unsqueeze(0).expand(
+            self.num_samples, -1, -1
+        ).reshape(-1, covariates.reshape(batch_size, -1).size(-1))
+
+        # Get logits for all samples at once
+        a_logits = self.model.decode(covariates_expanded, z_s)  # [num_samples * batch_size, treatment_dim]
+
+        # Reshape back and expand true_treatments
+        a_logits = a_logits.view(self.num_samples, batch_size, -1)  # [num_samples, batch_size, treatment_dim]
+        true_treatments_expanded = true_treatments.unsqueeze(-1).unsqueeze(0).expand(self.num_samples, -1, -1)
+
+        # Compute log probabilities for all samples
+        log_probs = -F.binary_cross_entropy_with_logits(
+            a_logits, true_treatments_expanded, reduction='none'
+        ).sum(dim=-1)  # [num_samples, batch_size]
+
+        test_stat_true = log_probs.mean(dim=0)  # T(a_true) for each sample in batch
+
+        # Sample M treatment vectors and compute their test statistics
+        # Sample z for MC sampling: [num_samples, batch_size, z_dim]
+        z_s_mc = self.model.reparameterize(
+            mu.unsqueeze(0).expand(self.num_samples, -1, -1),
+            logvar.unsqueeze(0).expand(self.num_samples, -1, -1)
+        ).view(-1, mu.size(-1))  # [num_samples * batch_size, z_dim]
+
+        # Get MC logits and sample treatments
+        a_logits_mc = self.model.decode(covariates_expanded, z_s_mc)
+        a_logits_mc = a_logits_mc.view(self.num_samples, batch_size, -1)
+        a_mc = torch.bernoulli(torch.sigmoid(a_logits_mc))  # [num_samples, batch_size, treatment_dim]
+
+        # For each MC sample, compute test statistic using vectorized inner sampling
+        # Sample z for inner loop: [num_samples, num_samples, batch_size, z_dim]
+        z_s_inner = self.model.reparameterize(
+            mu.unsqueeze(0).unsqueeze(0).expand(self.num_samples, self.num_samples, -1, -1),
+            logvar.unsqueeze(0).unsqueeze(0).expand(self.num_samples, self.num_samples, -1, -1)
+        ).view(-1, mu.size(-1))  # [num_samples^2 * batch_size, z_dim]
+
+        # Expand covariates for inner sampling
+        covariates_inner = covariates.reshape(batch_size, -1).unsqueeze(0).unsqueeze(0).expand(
+            self.num_samples, self.num_samples, -1, -1
+        ).reshape(-1, covariates.reshape(batch_size, -1).size(-1))
+
+        # Get inner logits
+        a_logits_inner = self.model.decode(covariates_inner, z_s_inner)
+        a_logits_inner = a_logits_inner.view(self.num_samples, self.num_samples, batch_size, -1)
+
+        # Expand a_mc for broadcasting
+        a_mc_expanded = a_mc.unsqueeze(1).expand(-1, self.num_samples, -1, -1)
+
+        # Compute MC log probabilities
+        mc_log_probs = -F.binary_cross_entropy_with_logits(
+            a_logits_inner, a_mc_expanded, reduction='none'
+        ).sum(dim=-1)  # [num_samples, num_samples, batch_size]
+
+        # Average over inner samples to get test statistics
+        mc_test_stats = mc_log_probs.mean(dim=1)  # [num_samples, batch_size]
+
+        # Compute predictive p-values
+        comparisons = (mc_test_stats < test_stat_true.unsqueeze(0)).float()
+        p_values = comparisons.mean(dim=0)  # Average over M samples
+
+        # Log the mean p-value across the batch
+        self.log("val_p_value", p_values.mean(), on_epoch=True, prog_bar=True)
+
+        return loss
     
     def configure_optimizers(self):
         optimizer = torch.optim.AdamW(self.parameters(), weight_decay=self.weight_decay, lr=self.lr)
@@ -338,7 +423,7 @@ class deconfounder_grid(pl.LightningModule):
         # Sum over latent dimensions and apply tau scaling
         kldiv_loss = self.model.tau / 2 * torch.sum(quadratic_term + trace_term, dim=1)  # [batch_size]
         
-        return kldiv_loss.mean()
+        return kldiv_loss.mean() / (self.n_pixels * self.model.per_location_latent_dim)
     
     def loss(self, treatment_probs, mu, logvar, pred, true_treatments, true_outcomes):
         # Term 1: -log p_ψ(A_s | x_s, Z_s) - Treatment reconstruction
@@ -511,6 +596,9 @@ class Deconfounder(SpaceAlgo):
         return tensor.detach().cpu().numpy()
     
     def fit(self, dataset: SpaceDataset):
+        import wandb
+        os.environ["WANDB_START_METHOD"] = "thread"
+        
         LOGGER.debug("Building deconfounder model...")
         self.impl_kwargs["feature_dim"] = dataset.covariates.shape[1]
         self.model = deconfounder_grid(**self.impl_kwargs)
@@ -528,28 +616,28 @@ class Deconfounder(SpaceAlgo):
         self.test_ix = test_ix
         
         node_list = list(graph.nodes())
-        nbrs = {node: get_k_hop_neighbors(graph, node, self.impl_kwargs["radius"]) for node in node_list}
+        # nbrs = {node: get_k_hop_neighbors(graph, node, self.impl_kwargs["radius"]) for node in node_list}
         coords2id = {tuple(coord): i for i, coord in enumerate(dataset.full_coordinates)}
         
         self.traindata = InterferenceGridDataset(dataset, train_ix, coords2id, self.impl_kwargs["radius"])
         self.valdata = InterferenceGridDataset(dataset, test_ix, coords2id, self.impl_kwargs["radius"], self.traindata.treat_scaler, self.traindata.feat_scaler, self.traindata.output_scaler)
         
-        loader = DataLoader(self.traindata, batch_size=4, shuffle=True)
-        val_loader = DataLoader(self.valdata, batch_size=4, shuffle=False)
+        loader = DataLoader(self.traindata, batch_size=4, shuffle=True, num_workers=4, pin_memory=True)
+        val_loader = DataLoader(self.valdata, batch_size=4, shuffle=False, num_workers=4, pin_memory=True)
         
         
         LOGGER.debug("Preparing trainer...")
         callbacks = [
             ModelCheckpoint(
                 dirpath="checkpoints/",
-                filename="{epoch}-{val_loss:.2f}",
-                monitor="val_loss",
+                filename="{epoch}-{val_max_loss:.2f}",
+                monitor="val_max_loss",
                 mode="min",
                 save_top_k=3
             ),
             EarlyStopping(
-                monitor="val_outcome_loss",
-                patience=10,
+                monitor="val_max_loss",
+                patience=5,
                 mode="min"
             ),
             LearningRateMonitor(logging_interval="step"),
@@ -559,9 +647,10 @@ class Deconfounder(SpaceAlgo):
         wandb_logger = WandbLogger(
             project="cvae-treatment-model",  # Your project name
             name="cvae-experiment",          # Run name
-            log_model=True,                  # Log model checkpoints
+            log_model=False,                  # Log model checkpoints
             save_dir="./wandb_logs",
             config=self.impl_kwargs,
+            offline=True,
         )
 
         self.trainer = pl.Trainer(
@@ -578,8 +667,17 @@ class Deconfounder(SpaceAlgo):
 
         LOGGER.debug("Training deconfounder model...")
         self.trainer.fit(self.model, train_dataloaders=loader, val_dataloaders=val_loader)
-        LOGGER.debug("Finished training deconfounder model.")
         
+        # Load the best checkpoint state dict
+        best_checkpoint_path = self.trainer.checkpoint_callback.best_model_path
+        if best_checkpoint_path:
+            LOGGER.debug(f"Loading best model from: {best_checkpoint_path}")
+            checkpoint = torch.load(best_checkpoint_path, map_location=self.model.device)
+            self.model.load_state_dict(checkpoint['state_dict'])
+        else:
+            LOGGER.warning("No best checkpoint found, using final epoch model")
+
+        LOGGER.debug("Finished training deconfounder model.")
         
         
     def eval(self, dataset: SpaceDataset) -> dict:
@@ -591,7 +689,7 @@ class Deconfounder(SpaceAlgo):
         
         graph = nx.from_edgelist(dataset.full_edge_list)        
         node_list = list(graph.nodes())
-        nbrs = {node: get_k_hop_neighbors(graph, node, self.impl_kwargs["radius"]) for node in node_list}
+        nbrs = {node: get_k_hop_neighbors(graph, node,  max(dataset.radius, self.impl_kwargs["radius"])) for node in node_list}
         nbr_counts = {node: len(neigh) for node, neigh in nbrs.items()}
         max_count = max(nbr_counts.values())
         max_nodes = [node for node, cnt in nbr_counts.items() if cnt == max_count]
@@ -601,7 +699,7 @@ class Deconfounder(SpaceAlgo):
         
         self.evaldata = InterferenceGridDataset(dataset, max_nodes, coords2id, self.impl_kwargs["radius"], self.traindata.treat_scaler, self.traindata.feat_scaler, self.traindata.output_scaler)
         
-        loader = DataLoader(self.evaldata, batch_size=4, shuffle=False)
+        loader = DataLoader(self.evaldata, batch_size=4, shuffle=False, num_workers=4, pin_memory=True)
         preds = torch.cat(self.trainer.predict(self.model, loader))
         preds = preds.cpu().numpy()
 
@@ -613,7 +711,7 @@ class Deconfounder(SpaceAlgo):
         ite = []
         for a in dataset.treatment_values:
             cfdata = InterferenceGridDataset(dataset, max_nodes, coords2id, self.impl_kwargs["radius"], self.traindata.treat_scaler, self.traindata.feat_scaler, self.traindata.output_scaler, a=a, change="center")
-            loader = DataLoader(cfdata, batch_size=4, shuffle=False)
+            loader = DataLoader(cfdata, batch_size=4, shuffle=False, num_workers=4, pin_memory=True)
             
             preds_a = torch.cat(self.trainer.predict(self.model, loader))
             preds_a = preds_a.cpu().numpy()
@@ -630,7 +728,7 @@ class Deconfounder(SpaceAlgo):
             spill = []
             for a in dataset.treatment_values:
                 cfdata = InterferenceGridDataset(dataset, max_nodes, coords2id, self.impl_kwargs["radius"], self.traindata.treat_scaler, self.traindata.feat_scaler, self.traindata.output_scaler, a=a, change="nbr")
-                loader = DataLoader(cfdata, batch_size=4, shuffle=False)
+                loader = DataLoader(cfdata, batch_size=4, shuffle=False, num_workers=4, pin_memory=True)
 
                 preds_a = torch.cat(self.trainer.predict(self.model, loader))
                 preds_a = preds_a.cpu().numpy()
@@ -647,7 +745,7 @@ class Deconfounder(SpaceAlgo):
     
     def tune_metric(self, dataset: SpaceDataset) -> float:
         self.model.eval()
-        loader = DataLoader(self.valdata, batch_size=4, shuffle=False)
+        loader = DataLoader(self.valdata, batch_size=4, shuffle=False, num_workers=4, pin_memory=True)
         preds = torch.cat(self.trainer.predict(self.model, loader))
         preds = preds.cpu().numpy()
 

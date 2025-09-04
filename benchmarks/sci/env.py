@@ -276,6 +276,7 @@ class SpaceEnv:
         self,
         name: str,
         dir: str | None = None,
+        algo_rad: int = 0,
     ):
         """
         Initializes the SpaceEnv class using a dataset name.
@@ -382,7 +383,7 @@ class SpaceEnv:
             self.coordinates = np.array([list(map(int, k.split('_'))) for k in node2id.keys()])
             from sci.algorithms.utils import get_k_hop_neighbors
             node_list = list(self.graph.nodes())
-            nbrs = {node: get_k_hop_neighbors(self.graph, node, int(self.metadata["radius"])) for node in node_list}
+            nbrs = {node: get_k_hop_neighbors(self.graph, node, max(algo_rad, int(self.metadata["radius"]))) for node in node_list}
             nbr_counts = {node: len(neigh) for node, neigh in nbrs.items()}
             max_count = max(nbr_counts.values())
             self.max_nodes = [node for node, cnt in nbr_counts.items() if cnt == max_count]
