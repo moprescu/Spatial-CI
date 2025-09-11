@@ -85,7 +85,9 @@ class UNet(nn.Module):
         self.head = nn.Sequential(
             nn.AdaptiveAvgPool2d(1),
             nn.Flatten(),
-            nn.Linear(base_channels, n_classes)
+            nn.Linear(base_channels, 64),
+            nn.ReLU(),
+            nn.Linear(64, n_classes),
         )
     
     def forward(self, x):

@@ -221,7 +221,7 @@ class Spatial(SpaceAlgo):
     def fit(self, dataset: SpaceDataset):
         if self.spatial_split_kwargs is not None:
             train_ix, _, _ = spatial_train_test_split(
-                nx.from_edgelist(dataset.edges), **self.spatial_split_kwargs
+                nx.from_edgelist(dataset.edges), **self.spatial_split_kwargs, buffer=1 + dataset.radius
             )
             self.mask = torch.zeros(dataset.size()).to(self.device)
             self.mask[train_ix] = torch.tensor(1.0)
@@ -338,7 +338,7 @@ class SpatialPlus(SpaceAlgo):
     def fit(self, dataset: SpaceDataset):
         if self.spatial_split_kwargs is not None:
             train_ix, _, _ = spatial_train_test_split(
-                nx.from_edgelist(dataset.edges), **self.spatial_split_kwargs
+                nx.from_edgelist(dataset.edges), **self.spatial_split_kwargs, buffer=1 + dataset.radius
             )
             self.mask = torch.zeros(dataset.size()).to(self.device)
             self.mask[train_ix] = torch.tensor(1.0)
@@ -476,6 +476,37 @@ class SpatialPlus(SpaceAlgo):
         )
 
         return t_loss.cpu().item() + y_loss.cpu().item()
+    
+    def predict(self, dataset: SpaceDataset) -> float:
+        if self.mask is None:
+            LOGGER.warning("No mask specified for the tune metric. Using full dataset.")
+            tune_mask = None
+        else:
+            tune_mask = 1.0 - self.mask
+
+        coords = torch.FloatTensor(dataset.coordinates).to(self.device)
+        covars = torch.FloatTensor(dataset.covariates).to(self.device)
+        t = torch.FloatTensor(dataset.treatment).to(self.device)
+        covars = (covars - self.covars_mu) / self.covars_std
+        coords = (coords - self.coords_mu) / self.coords_std
+
+        # standardize t if not binary treatment
+        if not dataset.has_binary_treatment():
+            t = (t - self.t_mu) / self.t_std
+
+        with torch.no_grad():
+            t_pred = tps_pred(coords, self.cp_coords, covars, self.t_params)
+            if dataset.has_binary_treatment():
+                t_pred = torch.sigmoid(t_pred)
+            t_resid = t - t_pred
+
+            inputs = torch.cat(
+                [t_resid[:, None], torch.FloatTensor(dataset.covariates).to(self.device)], dim=1
+            )
+            inputs = (inputs - self.inputs_mu) / self.inputs_std
+            y_pred = tps_pred(coords, self.cp_coords, inputs, self.y_params)
+            y_pred = y_pred * self.y_std + self.y_mu
+        return y_pred.cpu().numpy().reshape(-1, 1)
 
 
 if __name__ == "__main__":

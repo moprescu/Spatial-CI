@@ -50,8 +50,11 @@ def main(cfg: DictConfig) -> None:
         seed_everything(gseed)
 
         train_ix, test_ix, _ = spatial_train_test_split(
-            env.graph, **{**cfg.spatial_train_test_split, "buffer": cfg.spatial_train_test_split["buffer"] + env.radius if cfg.algo.use_interference else cfg.spatial_train_test_split["buffer"]}
+            env.graph, **{**cfg.spatial_train_test_split, "buffer": cfg.spatial_train_test_split["buffer"] + env.radius}
         )
+        # train_ix, test_ix, _ = spatial_train_test_split(
+        #     env.graph, **{**cfg.spatial_train_test_split, "buffer": cfg.spatial_train_test_split["buffer"] + env.radius if cfg.algo.use_interference else cfg.spatial_train_test_split["buffer"]}
+        # )
 
         for i, full_dataset in enumerate(env.make_all()):
             LOGGER.info(f"Running dataset {i} from {env_name}")
@@ -70,6 +73,8 @@ def main(cfg: DictConfig) -> None:
             if len(param_space) > 0:
 
                 def objective(config):
+                    # seed_everything(gseed)
+                    seed_everything(gseed)
                     method = hydra.utils.instantiate(cfg.algo.method, **config)
                     method.fit(train_dataset)
                     tune_metric = method.tune_metric(test_dataset)
@@ -108,9 +113,11 @@ def main(cfg: DictConfig) -> None:
                 best_params = {}
 
             LOGGER.info("...training full model")
+            seed_everything(gseed)
             method = hydra.utils.instantiate(cfg.algo.method, **best_params)
             method.fit(full_dataset)
             effects = method.eval(full_dataset)
+            # LOGGER.info(f"actual effects: {effects}")
 
             # load evaluator
             evaluator = sci.DatasetEvaluator(full_dataset)

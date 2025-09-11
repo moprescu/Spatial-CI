@@ -78,7 +78,7 @@ class DatasetEvaluator:
             assert self.dataset.has_binary_treatment(), "binary spill only valid in binary"
             spillate_true = (spill_true[:, 1] - spill_true[:, 0]).mean()
             errors["spill_error"] = (spill - spillate_true) / scale
-            errors["spill"] = np.abs(errors["ate_error"])
+            errors["spill"] = np.abs(errors["spill_error"])
         
         return errors
 

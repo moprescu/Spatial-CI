@@ -45,6 +45,7 @@ class SpaceDataset:
     full_covariates: np.ndarray = None
     full_outcome: np.ndarray = None
     full_coordinates: np.ndarray = None
+    datatype: str = None
 
     def has_binary_treatment(self) -> bool:
         """
@@ -162,6 +163,7 @@ class SpaceDataset:
             full_covariates=self.full_covariates,
             full_outcome=self.full_outcome,
             full_coordinates=self.full_coordinates,
+            datatype=self.datatype,
         )
 
     def size(self) -> int:
@@ -236,6 +238,7 @@ class SpaceDataset:
                 full_covariates=self.full_covariates,
                 full_outcome=self.full_outcome,
                 full_coordinates=self.full_coordinates,
+                datatype=self.datatype,
             )
 
 
@@ -394,6 +397,7 @@ class SpaceEnv:
             # Create mapping from original node IDs to new consecutive IDs (0, 1, 2, ...)
             old_to_new_mapping = {old_id: new_id for new_id, old_id in enumerate(self.max_nodes)}
             self.graph = nx.relabel_nodes(subgraph, old_to_new_mapping) # Relabel the nodes
+            self.datatype = "grid"
         else:
             import geopandas as gpd
             gdf = gpd.read_file(os.path.join(tgtdir, "map_df.geojson"))
@@ -401,6 +405,7 @@ class SpaceEnv:
             print(map_df)
             self.coordinates = map_df[["latitude", "longitude"]].to_numpy()
             print(self.coordinates)
+            self.datatype = "graph"
             
             
         # coordinates = []
@@ -516,6 +521,7 @@ class SpaceEnv:
             full_covariates=obs_covars,
             full_outcome=self.outcome,
             full_coordinates=self.coordinates,
+            datatype=self.datatype,
         )
         
         if "grid" in self.metadata["base_name"]:
