@@ -39,6 +39,7 @@ class CVAE_Grid(nn.Module):
         connectivity: int = 4,
         tau: float = 10.0,
         eps: float = 1e-5,
+        latent_dim: int = 8,
     ):
         """
         CVAE for interference-aware deconfounding on gridded datasets
@@ -58,7 +59,7 @@ class CVAE_Grid(nn.Module):
         self.patch_size = 2 * radius + 1
         self.kernel_size = kernel_size
         # self.per_location_latent_dim = latent_dim
-        self.per_location_latent_dim = encoder_conv2 // 2
+        self.per_location_latent_dim = latent_dim
         self.latent_dim = self.patch_size * self.patch_size * self.per_location_latent_dim
         self.connectivity = connectivity
         
@@ -74,8 +75,8 @@ class CVAE_Grid(nn.Module):
         
         # Encoder output processing including covariates
         self.encoder_flatten_dim = self.enc_out_chan
-        # self.fc_mu = nn.Linear(self.encoder_flatten_dim, self.latent_dim)
-        # self.fc_logvar = nn.Linear(self.encoder_flatten_dim, self.latent_dim)
+        self.fc_mu = nn.Linear(self.encoder_flatten_dim, self.latent_dim)
+        self.fc_logvar = nn.Linear(self.encoder_flatten_dim, self.latent_dim)
         
         # Decoder: One-layer MLP p_ψ(A_s=1|x_s,Z_s) = σ(f_ψ(x_s,Z_s))
         self.decoder = nn.Linear( self.patch_size * self.patch_size * self.feature_dim + self.latent_dim, 1)
@@ -133,17 +134,17 @@ class CVAE_Grid(nn.Module):
         # Two 3×3 convolutions
         h = self.encoder_conv(encoder_input)
         
-        # if self.encoder_pool == "max":
-        #     h = F.adaptive_max_pool2d(h, (1, 1)).squeeze(-1).squeeze(-1)
-        # elif self.encoder_pool == "avg":
-        #     # Global average pooling to get fixed-size representation
-        #     h = F.adaptive_avg_pool2d(h, (1, 1)).squeeze(-1).squeeze(-1)
+        if self.encoder_pool == "max":
+            h = F.adaptive_max_pool2d(h, (1, 1)).squeeze(-1).squeeze(-1)
+        elif self.encoder_pool == "avg":
+            # Global average pooling to get fixed-size representation
+            h = F.adaptive_avg_pool2d(h, (1, 1)).squeeze(-1).squeeze(-1)
                 
         # # Output latent parameters
-        # mu = self.fc_mu(h)
-        # logvar = self.fc_logvar(h)
-        mu = h[:, 0:self.enc_out_chan//2].flatten(start_dim=1)
-        logvar =h[:, self.enc_out_chan//2:].flatten(start_dim=1)
+        mu = self.fc_mu(h)
+        logvar = self.fc_logvar(h)
+        # mu = h[:, 0:self.enc_out_chan//2].flatten(start_dim=1)
+        # logvar =h[:, self.enc_out_chan//2:].flatten(start_dim=1)
         
         return mu, logvar
     
@@ -239,6 +240,7 @@ class CVAE(pl.LightningModule):
         beta_max: float = 1e-1,
         beta_epoch_max: int = 10,
         epochs: int = 10,
+        latent_dim: int = 8,
         datatype: str = "grid",
     ):
         super().__init__()
@@ -251,6 +253,7 @@ class CVAE(pl.LightningModule):
         self.connectivity = connectivity
         self.tau = tau
         self.eps = eps
+        self.latent_dim = latent_dim
         self.datatype = datatype
         
         if self.datatype == "grid":
@@ -264,6 +267,7 @@ class CVAE(pl.LightningModule):
                 connectivity=self.connectivity,
                 tau=self.tau,
                 eps=self.eps,
+                latent_dim=self.latent_dim,
             )
         else:
             raise ValueError(f"Unsupported dataset type: {datatype}")
@@ -773,6 +777,7 @@ class Deconfounder(SpaceAlgo):
         connectivity: int = 4,
         tau: float = 10.0,
         eps: float = 1e-5,
+        latent_dim: int = 8,
         bilinear: bool = False,
         unet_base_chan: int = 16,
         weight_decay_cvae: float = 1e-5,
@@ -813,6 +818,7 @@ class Deconfounder(SpaceAlgo):
             "beta_max": beta_max,
             "beta_epoch_max": beta_epoch_max,
             "epochs": epochs_cvae,
+            "latent_dim": latent_dim,
         }
         
         self.unet_kwargs = {
@@ -944,7 +950,7 @@ class Deconfounder(SpaceAlgo):
             enable_progress_bar=True,
             callbacks=callbacks,
             max_epochs=self.epochs_cvae,
-            deterministic=True,
+            deterministic="warn",
             enable_model_summary=True,
         )
 
@@ -1012,14 +1018,13 @@ class Deconfounder(SpaceAlgo):
                 self.head_model = SpatialPlus(**self.spatialplus_kwargs)
                 self.head_model.fit(new_dataset)
             elif self.head == "s2sls-lag1":
-                from .pysal_spreg import GMLag
-                self.head_model = GMLag(**self.s2sls_kwargs)
-                self.s2sls_fit = False
+                self.head_model = GMLag(**self.s2sls_kwargs)        
         
             
         if self.head == "unet":
             
-            self.unet_kwargs["feature_dim"] = dataset.covariates.shape[1] + (self.cvae_kwargs["encoder_conv2"] // 2)
+            # self.unet_kwargs["feature_dim"] = dataset.covariates.shape[1] + (self.cvae_kwargs["encoder_conv2"] // 2)
+            self.unet_kwargs["feature_dim"] = dataset.covariates.shape[1] + self.cvae_kwargs["latent_dim"]
             self.unet_kwargs["datatype"] = dataset.datatype
             self.unet_kwargs["radius"] = max(self.cvae_radius, dataset.conf_radius)
             
@@ -1043,7 +1048,7 @@ class Deconfounder(SpaceAlgo):
                 ),
                 EarlyStopping(
                     monitor="val_loss",
-                    patience=5,
+                    patience=10,
                     mode="min"
                 ),
                 LearningRateMonitor(logging_interval="step"),
@@ -1068,7 +1073,7 @@ class Deconfounder(SpaceAlgo):
                 enable_progress_bar=True,
                 callbacks=callbacks,
                 max_epochs=self.epochs_head,
-                deterministic=True,
+                deterministic="warn",
                 enable_model_summary=True,
             )
 
@@ -1121,8 +1126,8 @@ class Deconfounder(SpaceAlgo):
     def tune_metric(self, dataset: SpaceDataset) -> float:
     
         if self.head == "unet":
-            preds = self.predict(dataset, self.max_nodes, a=None, change=None)[:, 0]
-            return np.mean((dataset.full_outcome[self.max_nodes] - preds) ** 2)
+            preds = self.predict(dataset, self.test_ix, a=None, change=None)[:, 0]
+            return np.mean((dataset.full_outcome[self.test_ix] - preds) ** 2)
         elif self.head == "spatialplus" or self.head == "s2sls-lag1":
             predict_data = CVAEDataset(dataset, self.max_nodes, self.max_coords2id, self.cvae_radius, self.cvae_traindata.treat_scaler, self.cvae_traindata.feat_scaler, self.cvae_traindata.output_scaler, datatype=dataset.datatype, dataset_radius=dataset.conf_radius)
         
@@ -1197,10 +1202,6 @@ class Deconfounder(SpaceAlgo):
                 new_dataset.covariates = np.concatenate([new_dataset.covariates, flat_wo_center, latents], axis=1)
             else:
                 new_dataset.covariates = np.concatenate([new_dataset.covariates, latents], axis=1)
-                
-            if self.head == "s2sls-lag1" and not self.s2sls_fit:
-                self.head_model.fit(new_dataset)
-                self.s2sls_fit = True
             
             return self.head_model.predict(new_dataset)
         

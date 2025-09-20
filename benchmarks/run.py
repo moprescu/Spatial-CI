@@ -6,9 +6,10 @@ import time
 import hydra
 import jsonlines
 import ray
-from omegaconf import DictConfig
+from omegaconf import DictConfig, OmegaConf
 from pytorch_lightning import seed_everything
 from ray import tune
+import torch, gc
 
 import sci
 from sci import SpaceEnv
@@ -19,7 +20,8 @@ LOGGER = logging.getLogger(__name__)
 
 @hydra.main(config_path="conf", config_name="config", version_base=None)
 def main(cfg: DictConfig) -> None:
-    # make logfile
+    cfg = OmegaConf.create(OmegaConf.to_container(cfg, resolve=True))
+    # make logfilealgo
     timestamp = time.strftime("%Y%m%d-%H%M%S")
     logfile = cfg.logfile
     os.makedirs(os.path.dirname(logfile), exist_ok=True)
@@ -47,15 +49,16 @@ def main(cfg: DictConfig) -> None:
     # print(env.coordinates)
         
     for gseed in cfg.global_seeds:
+        torch.cuda.empty_cache()
         seed_everything(gseed)
 
         train_ix, test_ix, _ = spatial_train_test_split(
             env.graph, **{**cfg.spatial_train_test_split, "buffer": cfg.spatial_train_test_split["buffer"] + env.radius}
         )
+        right_method = "deconfounder" in cfg.algo.name or "spatial" in cfg.algo.name or "gcn" in cfg.algo.name
         # train_ix, test_ix, _ = spatial_train_test_split(
         #     env.graph, **{**cfg.spatial_train_test_split, "buffer": cfg.spatial_train_test_split["buffer"] + env.radius if cfg.algo.use_interference else cfg.spatial_train_test_split["buffer"]}
         # )
-
         for i, full_dataset in enumerate(env.make_all()):
             LOGGER.info(f"Running dataset {i} from {env_name}")
 
@@ -73,11 +76,32 @@ def main(cfg: DictConfig) -> None:
             if len(param_space) > 0:
 
                 def objective(config):
-                    # seed_everything(gseed)
                     seed_everything(gseed)
                     method = hydra.utils.instantiate(cfg.algo.method, **config)
                     method.fit(train_dataset)
                     tune_metric = method.tune_metric(test_dataset)
+                    num_trials = 0
+                    
+                    while right_method and tune_metric > 100 and num_trials < 3:
+                        if cfg.algo.needs_train_test_split:
+                            tmp_train_ix, tmp_test_ix, _ = spatial_train_test_split(
+                                env.graph, **{**cfg.spatial_train_test_split, "buffer": cfg.spatial_train_test_split["buffer"] + env.radius}
+                            )
+                            tmp_train_dataset = full_dataset[tmp_train_ix]
+                            tmp_test_dataset = full_dataset[tmp_test_ix]
+                        else:
+                            tmp_train_dataset = train_dataset
+                            tmp_test_dataset = test_dataset
+                        method = hydra.utils.instantiate(cfg.algo.method, **config)
+                        method.fit(tmp_train_dataset)
+                        tune_metric = method.tune_metric(tmp_test_dataset)
+                        num_trials = num_trials + 1
+                        
+                        del method
+                        gc.collect()
+                        torch.cuda.empty_cache()
+                        torch.cuda.reset_peak_memory_stats()
+                        torch.cuda.ipc_collect()
                     return tune_metric
 
                 objective = tune.with_resources(objective, dict(cfg.algo.tune.resources))
@@ -114,11 +138,26 @@ def main(cfg: DictConfig) -> None:
 
             LOGGER.info("...training full model")
             seed_everything(gseed)
+            torch.cuda.empty_cache()
             method = hydra.utils.instantiate(cfg.algo.method, **best_params)
             method.fit(full_dataset)
+            if len(param_space) > 0:
+                tune_metric = method.tune_metric(test_dataset)
+                num_trials = 0
+                while right_method and tune_metric > 100 and num_trials < 3:
+                    method = hydra.utils.instantiate(cfg.algo.method, **best_params)
+                    method.fit(full_dataset)
+                    tune_metric = method.tune_metric(test_dataset)
+                    num_trials = num_trials + 1
             effects = method.eval(full_dataset)
             # LOGGER.info(f"actual effects: {effects}")
-
+            
+            # del method
+            # gc.collect()
+            # torch.cuda.empty_cache()
+            # torch.cuda.reset_peak_memory_stats()
+            # torch.cuda.ipc_collect()
+                    
             # load evaluator
             evaluator = sci.DatasetEvaluator(full_dataset)
             eval_results = evaluator.eval(**effects)

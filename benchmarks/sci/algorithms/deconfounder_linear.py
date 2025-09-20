@@ -74,8 +74,8 @@ class CVAE_Grid(nn.Module):
         
         # Encoder output processing including covariates
         self.encoder_flatten_dim = self.enc_out_chan
-        # self.fc_mu = nn.Linear(self.encoder_flatten_dim, self.latent_dim)
-        # self.fc_logvar = nn.Linear(self.encoder_flatten_dim, self.latent_dim)
+        self.fc_mu = nn.Linear(self.encoder_flatten_dim, self.latent_dim)
+        self.fc_logvar = nn.Linear(self.encoder_flatten_dim, self.latent_dim)
         
         # Decoder: One-layer MLP p_ψ(A_s=1|x_s,Z_s) = σ(f_ψ(x_s,Z_s))
         self.decoder = nn.Linear( self.patch_size * self.patch_size * self.feature_dim + self.latent_dim, 1)
@@ -133,17 +133,17 @@ class CVAE_Grid(nn.Module):
         # Two 3×3 convolutions
         h = self.encoder_conv(encoder_input)
         
-        # if self.encoder_pool == "max":
-        #     h = F.adaptive_max_pool2d(h, (1, 1)).squeeze(-1).squeeze(-1)
-        # elif self.encoder_pool == "avg":
-        #     # Global average pooling to get fixed-size representation
-        #     h = F.adaptive_avg_pool2d(h, (1, 1)).squeeze(-1).squeeze(-1)
+        if self.encoder_pool == "max":
+            h = F.adaptive_max_pool2d(h, (1, 1)).squeeze(-1).squeeze(-1)
+        elif self.encoder_pool == "avg":
+            # Global average pooling to get fixed-size representation
+            h = F.adaptive_avg_pool2d(h, (1, 1)).squeeze(-1).squeeze(-1)
                 
         # # Output latent parameters
-        # mu = self.fc_mu(h)
-        # logvar = self.fc_logvar(h)
-        mu = h[:, 0:self.enc_out_chan//2].flatten(start_dim=1)
-        logvar =h[:, self.enc_out_chan//2:].flatten(start_dim=1)
+        mu = self.fc_mu(h)
+        logvar = self.fc_logvar(h)
+        # mu = h[:, 0:self.enc_out_chan//2].flatten(start_dim=1)
+        # logvar =h[:, self.enc_out_chan//2:].flatten(start_dim=1)
         
         return mu, logvar
     
@@ -1012,9 +1012,7 @@ class Deconfounder(SpaceAlgo):
                 self.head_model = SpatialPlus(**self.spatialplus_kwargs)
                 self.head_model.fit(new_dataset)
             elif self.head == "s2sls-lag1":
-                from .pysal_spreg import GMLag
-                self.head_model = GMLag(**self.s2sls_kwargs)
-                self.s2sls_fit = False
+                self.head_model = GMLag(**self.s2sls_kwargs)        
         
             
         if self.head == "unet":
@@ -1043,7 +1041,7 @@ class Deconfounder(SpaceAlgo):
                 ),
                 EarlyStopping(
                     monitor="val_loss",
-                    patience=5,
+                    patience=10,
                     mode="min"
                 ),
                 LearningRateMonitor(logging_interval="step"),
@@ -1197,10 +1195,6 @@ class Deconfounder(SpaceAlgo):
                 new_dataset.covariates = np.concatenate([new_dataset.covariates, flat_wo_center, latents], axis=1)
             else:
                 new_dataset.covariates = np.concatenate([new_dataset.covariates, latents], axis=1)
-                
-            if self.head == "s2sls-lag1" and not self.s2sls_fit:
-                self.head_model.fit(new_dataset)
-                self.s2sls_fit = True
             
             return self.head_model.predict(new_dataset)
         
