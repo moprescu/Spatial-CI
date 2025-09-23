@@ -11,7 +11,7 @@ method:
   beta_epoch_max: 5
   epochs_cvae: 30
   encoder_conv1: 64
-  encoder_conv2: 4
+  encoder_conv2: 16
   # unet kwargs
   head: unet
   epochs_head: 30

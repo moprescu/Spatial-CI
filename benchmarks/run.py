@@ -135,6 +135,10 @@ def main(cfg: DictConfig) -> None:
             else:
                 LOGGER.info("...skipping hyperparameter tuning, no param space provided")
                 best_params = {}
+                
+            if len(param_space) > 0:
+                ray.shutdown()
+                time.sleep(2)
 
             LOGGER.info("...training full model")
             seed_everything(gseed)

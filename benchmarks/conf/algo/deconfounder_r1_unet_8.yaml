@@ -2,7 +2,7 @@ needs_train_test_split: false
 use_interference: true
 
 method:
-  _target_: sci.algorithms.deconfounder_e2e.Deconfounder
+  _target_: sci.algorithms.Deconfounder
   kernel_size: 3
   radius: 1
   connectivity: 8
@@ -12,13 +12,11 @@ method:
   epochs_cvae: 30
   encoder_conv1: 64
   encoder_conv2: 8
-  # batch_size: 4
   # unet kwargs
   head: unet
   epochs_head: 30
   lr_head: 1e-3
   bilinear: false
-  latent_dim: 8
 
 
 tune:

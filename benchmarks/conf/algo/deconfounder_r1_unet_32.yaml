@@ -4,14 +4,14 @@ use_interference: true
 method:
   _target_: sci.algorithms.Deconfounder
   kernel_size: 3
-  radius: 2
+  radius: 1
   connectivity: 8
   encoder_pool: max
   lr_cvae: 1e-3
   beta_epoch_max: 5
   epochs_cvae: 30
   encoder_conv1: 64
-  encoder_conv2: 4
+  encoder_conv2: 32
   # unet kwargs
   head: unet
   epochs_head: 30

@@ -912,7 +912,7 @@ class Deconfounder(SpaceAlgo):
         LOGGER.debug("Preparing trainer...")
         callbacks = [
             ModelCheckpoint(
-                dirpath="checkpoints/",
+                dirpath="new_checkpoints/",
                 filename="{epoch}-{val_max_loss:.2f}",
                 monitor="val_max_loss",
                 mode="min",
@@ -1035,7 +1035,7 @@ class Deconfounder(SpaceAlgo):
             LOGGER.debug("Preparing trainer...")
             callbacks = [
                 ModelCheckpoint(
-                    dirpath="checkpoints/",
+                    dirpath="new_unet_checkpoints/",
                     filename="{epoch}-{val_loss:.2f}",
                     monitor="val_loss",
                     mode="min",

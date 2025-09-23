@@ -9,200 +9,374 @@
 \centering
 \begin{tabular}{lllll}
 \toprule
- &  &  & \textsc{ate} & \textsc{spill} \\
+ &  &  & \textsc{dir} & \textsc{spill} \\
 Environment & Confounder & Method &  &  \\
 \midrule
-\multirow[t]{30}{*}{$ (LC)\; PM\_{2.5} \;\to\; m \;(r=1) $} & \multirow[t]{15}{*}{$\rho_{\text{pop}}$} & \textsc{cvae-\textsc{spatial+} (r=1) (l=1)} & 0.08 ± {\small 0.01} & 0.39 ± {\small 0.08} \\
- &  & \textsc{cvae-\textsc{spatial+} (r=1) (l=2)} & 0.07 ± {\small 0.02} & 0.35 ± {\small 0.08} \\
- &  & \textsc{cvae-\textsc{spatial+} (r=1) (l=4)} & 0.06 ± {\small 0.02} & 0.30 ± {\small 0.08} \\
- &  & \textsc{cvae-\textsc{spatial+} (r=1) (l=8)} & 0.09 ± {\small 0.04} & 0.28 ± {\small 0.09} \\
- &  & \textsc{cvae-\textsc{spatial+} (r=1) (l=32)} & 0.15 ± {\small 0.03} & \bf 0.10 ± {\small 0.04} \\
- &  & \textsc{cvae-\textsc{spatial+} (r=2) (l=1)} & 0.11 ± {\small 0.14} & 1.59 ± {\small 2.05} \\
- &  & \textsc{cvae-\textsc{spatial+} (r=2) (l=2)} & 0.04 ± {\small 0.02} & 1.43 ± {\small 1.90} \\
- &  & \textsc{cvae-\textsc{spatial+} (r=2) (l=4)} & 0.18 ± {\small 0.26} & 1.42 ± {\small 2.14} \\
- &  & \textsc{cvae-\textsc{spatial+} (r=2) (l=8)} & 0.30 ± {\small 0.37} & 1.43 ± {\small 2.40} \\
- &  & \textsc{cvae-\textsc{spatial+} (r=2) (l=32)} & 0.85 ± {\small 1.28} & 1.68 ± {\small 2.90} \\
- &  & \textsc{dapsm} & 0.25 ± {\small 0.01} & n/a \\
- &  & \textsc{gcnn} & 0.36 ± {\small 0.03} & n/a \\
- &  & \textsc{s2sls-lag1} & \bf 0.03 ± {\small 0.00} & n/a \\
- &  & \textsc{spatial+} & 0.13 ± {\small 0.04} & n/a \\
- &  & \textsc{spatial} & 0.10 ± {\small 0.07} & n/a \\
+\multirow[t]{46}{*}{$ (LC)\; PM\_{2.5} \;\to\; m \;(r=1) $} & \multirow[t]{23}{*}{$\rho_{\text{pop}}$} & \textsc{cvae-spatial+ (r=0) (z=1)} & 0.08 ± { 0.06} & n/a \\
+ &  & \textsc{cvae-spatial+ (r=0) (z=2)} & 0.13 ± { 0.07} & n/a \\
+ &  & \textsc{cvae-spatial+ (r=0) (z=4)} & 0.18 ± { 0.05} & n/a \\
+ &  & \textsc{cvae-spatial+ (r=0) (z=8)} & 0.28 ± { 0.05} & n/a \\
+ &  & \textsc{cvae-spatial+ (r=0) (z=16)} & 0.36 ± { 0.04} & n/a \\
+ &  & \textsc{cvae-spatial+ (r=0) (z=32)} & 0.42 ± { 0.03} & n/a \\
+ &  & \textsc{cvae-spatial+ (r=1) (z=1)} & 0.08 ± { 0.01} & 0.39 ± { 0.08} \\
+ &  & \textsc{cvae-spatial+ (r=1) (z=2)} & 0.07 ± { 0.02} & 0.35 ± { 0.08} \\
+ &  & \textsc{cvae-spatial+ (r=1) (z=4)} & 0.06 ± { 0.02} & 0.30 ± { 0.08} \\
+ &  & \textsc{cvae-spatial+ (r=1) (z=8)} & 0.09 ± { 0.04} & 0.28 ± { 0.09} \\
+ &  & \textsc{cvae-spatial+ (r=1) (z=16)} & 0.15 ± { 0.03} & 0.11 ± { 0.07} \\
+ &  & \textsc{cvae-spatial+ (r=1) (z=32)} & 0.15 ± { 0.03} & \bf 0.10 ± { 0.04} \\
+ &  & \textsc{cvae-spatial+ (r=2) (z=1)} & 0.11 ± { 0.14} & 1.59 ± { 2.05} \\
+ &  & \textsc{cvae-spatial+ (r=2) (z=2)} & 0.04 ± { 0.02} & 1.43 ± { 1.90} \\
+ &  & \textsc{cvae-spatial+ (r=2) (z=4)} & 0.23 ± { 0.33} & 1.93 ± { 2.92} \\
+ &  & \textsc{cvae-spatial+ (r=2) (z=8)} & 0.30 ± { 0.37} & 1.43 ± { 2.40} \\
+ &  & \textsc{cvae-spatial+ (r=2) (z=16)} & 0.31 ± { 0.35} & 1.52 ± { 2.62} \\
+ &  & \textsc{cvae-spatial+ (r=2) (z=32)} & 0.78 ± { 1.19} & 1.76 ± { 3.06} \\
+ &  & \textsc{dapsm} & 0.25 ± { 0.01} & n/a \\
+ &  & \textsc{gcnn} & 0.36 ± { 0.03} & n/a \\
+ &  & \textsc{s2sls-lag1} & \bf 0.03 ± { 0.00} & n/a \\
+ &  & \textsc{spatial+} & 0.13 ± { 0.04} & n/a \\
+ &  & \textsc{spatial} & 0.10 ± { 0.07} & n/a \\
 \cline{2-5}
- & \multirow[t]{15}{*}{$q_{\text{summer}}$} & \textsc{cvae-\textsc{spatial+} (r=1) (l=1)} & \bf 0.05 ± {\small 0.01} & 0.40 ± {\small 0.09} \\
- &  & \textsc{cvae-\textsc{spatial+} (r=1) (l=2)} & 0.05 ± {\small 0.02} & 0.31 ± {\small 0.08} \\
- &  & \textsc{cvae-\textsc{spatial+} (r=1) (l=4)} & 0.08 ± {\small 0.03} & 0.29 ± {\small 0.06} \\
- &  & \textsc{cvae-\textsc{spatial+} (r=1) (l=8)} & 0.09 ± {\small 0.04} & 0.28 ± {\small 0.06} \\
- &  & \textsc{cvae-\textsc{spatial+} (r=1) (l=32)} & 0.24 ± {\small 0.04} & \bf 0.11 ± {\small 0.05} \\
- &  & \textsc{cvae-\textsc{spatial+} (r=2) (l=1)} & 0.23 ± {\small 0.35} & 1.50 ± {\small 1.79} \\
- &  & \textsc{cvae-\textsc{spatial+} (r=2) (l=2)} & 0.13 ± {\small 0.18} & 1.47 ± {\small 1.91} \\
- &  & \textsc{cvae-\textsc{spatial+} (r=2) (l=4)} & 0.22 ± {\small 0.28} & 1.35 ± {\small 1.84} \\
- &  & \textsc{cvae-\textsc{spatial+} (r=2) (l=8)} & 0.61 ± {\small 0.85} & 1.54 ± {\small 2.59} \\
- &  & \textsc{cvae-\textsc{spatial+} (r=2) (l=32)} & 0.88 ± {\small 1.34} & 1.56 ± {\small 2.71} \\
- &  & \textsc{dapsm} & 0.30 ± {\small 0.03} & n/a \\
- &  & \textsc{gcnn} & 0.41 ± {\small 0.03} & n/a \\
- &  & \textsc{s2sls-lag1} & 0.20 ± {\small 0.00} & n/a \\
- &  & \textsc{spatial+} & 0.13 ± {\small 0.04} & n/a \\
- &  & \textsc{spatial} & 0.10 ± {\small 0.07} & n/a \\
+ & \multirow[t]{23}{*}{$q_{\text{summer}}$} & \textsc{cvae-spatial+ (r=0) (z=1)} & 0.09 ± { 0.05} & n/a \\
+ &  & \textsc{cvae-spatial+ (r=0) (z=2)} & 0.13 ± { 0.06} & n/a \\
+ &  & \textsc{cvae-spatial+ (r=0) (z=4)} & 0.22 ± { 0.10} & n/a \\
+ &  & \textsc{cvae-spatial+ (r=0) (z=8)} & 0.28 ± { 0.08} & n/a \\
+ &  & \textsc{cvae-spatial+ (r=0) (z=16)} & 0.37 ± { 0.03} & n/a \\
+ &  & \textsc{cvae-spatial+ (r=0) (z=32)} & 0.42 ± { 0.02} & n/a \\
+ &  & \textsc{cvae-spatial+ (r=1) (z=1)} & \bf 0.05 ± { 0.01} & 0.40 ± { 0.09} \\
+ &  & \textsc{cvae-spatial+ (r=1) (z=2)} & 0.05 ± { 0.02} & 0.31 ± { 0.08} \\
+ &  & \textsc{cvae-spatial+ (r=1) (z=4)} & 0.08 ± { 0.03} & 0.29 ± { 0.06} \\
+ &  & \textsc{cvae-spatial+ (r=1) (z=8)} & 0.09 ± { 0.04} & 0.28 ± { 0.06} \\
+ &  & \textsc{cvae-spatial+ (r=1) (z=16)} & 0.20 ± { 0.04} & \bf 0.10 ± { 0.04} \\
+ &  & \textsc{cvae-spatial+ (r=1) (z=32)} & 0.24 ± { 0.04} & 0.11 ± { 0.05} \\
+ &  & \textsc{cvae-spatial+ (r=2) (z=1)} & 0.23 ± { 0.35} & 1.50 ± { 1.79} \\
+ &  & \textsc{cvae-spatial+ (r=2) (z=2)} & 0.13 ± { 0.18} & 1.47 ± { 1.91} \\
+ &  & \textsc{cvae-spatial+ (r=2) (z=4)} & 0.32 ± { 0.46} & 1.74 ± { 2.57} \\
+ &  & \textsc{cvae-spatial+ (r=2) (z=8)} & 0.61 ± { 0.85} & 1.54 ± { 2.59} \\
+ &  & \textsc{cvae-spatial+ (r=2) (z=16)} & 0.52 ± { 0.67} & 1.68 ± { 2.89} \\
+ &  & \textsc{cvae-spatial+ (r=2) (z=32)} & 0.82 ± { 1.24} & 1.64 ± { 2.84} \\
+ &  & \textsc{dapsm} & 0.30 ± { 0.03} & n/a \\
+ &  & \textsc{gcnn} & 0.41 ± { 0.03} & n/a \\
+ &  & \textsc{s2sls-lag1} & 0.20 ± { 0.00} & n/a \\
+ &  & \textsc{spatial+} & 0.13 ± { 0.04} & n/a \\
+ &  & \textsc{spatial} & 0.10 ± { 0.07} & n/a \\
 \cline{1-5} \cline{2-5}
-\multirow[t]{30}{*}{$ (LC)\; PM\_{2.5} \;\to\; m \;(r=2) $} & \multirow[t]{15}{*}{$\rho_{\text{pop}}$} & \textsc{cvae-\textsc{spatial+} (r=1) (l=1)} & 0.26 ± {\small 0.03} & 0.14 ± {\small 0.03} \\
- &  & \textsc{cvae-\textsc{spatial+} (r=1) (l=2)} & 0.22 ± {\small 0.03} & 0.09 ± {\small 0.03} \\
- &  & \textsc{cvae-\textsc{spatial+} (r=1) (l=4)} & 0.19 ± {\small 0.05} & 0.09 ± {\small 0.03} \\
- &  & \textsc{cvae-\textsc{spatial+} (r=1) (l=8)} & 0.09 ± {\small 0.05} & 0.08 ± {\small 0.04} \\
- &  & \textsc{cvae-\textsc{spatial+} (r=1) (l=32)} & \bf 0.03 ± {\small 0.01} & 0.23 ± {\small 0.07} \\
- &  & \textsc{cvae-\textsc{spatial+} (r=2) (l=1)} & 0.27 ± {\small 0.02} & 0.40 ± {\small 0.05} \\
- &  & \textsc{cvae-\textsc{spatial+} (r=2) (l=2)} & 0.24 ± {\small 0.03} & 0.34 ± {\small 0.05} \\
- &  & \textsc{cvae-\textsc{spatial+} (r=2) (l=4)} & 0.17 ± {\small 0.03} & 0.16 ± {\small 0.08} \\
- &  & \textsc{cvae-\textsc{spatial+} (r=2) (l=8)} & 0.10 ± {\small 0.02} & 0.09 ± {\small 0.03} \\
- &  & \textsc{cvae-\textsc{spatial+} (r=2) (l=32)} & 0.08 ± {\small 0.03} & \bf 0.08 ± {\small 0.02} \\
- &  & \textsc{dapsm} & 0.16 ± {\small 0.01} & n/a \\
- &  & \textsc{gcnn} & 0.18 ± {\small 0.03} & n/a \\
- &  & \textsc{s2sls-lag1} & 0.07 ± {\small 0.00} & n/a \\
- &  & \textsc{spatial+} & 0.10 ± {\small 0.02} & n/a \\
- &  & \textsc{spatial} & 0.17 ± {\small 0.03} & n/a \\
+\multirow[t]{46}{*}{$ (LC)\; PM\_{2.5} \;\to\; m \;(r=2) $} & \multirow[t]{23}{*}{$\rho_{\text{pop}}$} & \textsc{cvae-spatial+ (r=0) (z=1)} & 0.24 ± { 0.02} & n/a \\
+ &  & \textsc{cvae-spatial+ (r=0) (z=2)} & 0.21 ± { 0.02} & n/a \\
+ &  & \textsc{cvae-spatial+ (r=0) (z=4)} & 0.15 ± { 0.01} & n/a \\
+ &  & \textsc{cvae-spatial+ (r=0) (z=8)} & 0.07 ± { 0.02} & n/a \\
+ &  & \textsc{cvae-spatial+ (r=0) (z=16)} & 0.06 ± { 0.02} & n/a \\
+ &  & \textsc{cvae-spatial+ (r=0) (z=32)} & 0.16 ± { 0.01} & n/a \\
+ &  & \textsc{cvae-spatial+ (r=1) (z=1)} & 0.26 ± { 0.03} & 0.14 ± { 0.03} \\
+ &  & \textsc{cvae-spatial+ (r=1) (z=2)} & 0.22 ± { 0.03} & 0.09 ± { 0.03} \\
+ &  & \textsc{cvae-spatial+ (r=1) (z=4)} & 0.19 ± { 0.05} & 0.09 ± { 0.03} \\
+ &  & \textsc{cvae-spatial+ (r=1) (z=8)} & 0.09 ± { 0.05} & \bf 0.08 ± { 0.04} \\
+ &  & \textsc{cvae-spatial+ (r=1) (z=16)} & 0.06 ± { 0.02} & 0.12 ± { 0.05} \\
+ &  & \textsc{cvae-spatial+ (r=1) (z=32)} & \bf 0.03 ± { 0.01} & 0.23 ± { 0.07} \\
+ &  & \textsc{cvae-spatial+ (r=2) (z=1)} & 0.27 ± { 0.02} & 0.40 ± { 0.05} \\
+ &  & \textsc{cvae-spatial+ (r=2) (z=2)} & 0.24 ± { 0.03} & 0.34 ± { 0.05} \\
+ &  & \textsc{cvae-spatial+ (r=2) (z=4)} & 0.17 ± { 0.03} & 0.16 ± { 0.08} \\
+ &  & \textsc{cvae-spatial+ (r=2) (z=8)} & 0.10 ± { 0.02} & 0.09 ± { 0.03} \\
+ &  & \textsc{cvae-spatial+ (r=2) (z=16)} & 0.06 ± { 0.02} & 0.11 ± { 0.05} \\
+ &  & \textsc{cvae-spatial+ (r=2) (z=32)} & 0.06 ± { 0.03} & \bf 0.08 ± { 0.04} \\
+ &  & \textsc{dapsm} & 0.16 ± { 0.01} & n/a \\
+ &  & \textsc{gcnn} & 0.18 ± { 0.03} & n/a \\
+ &  & \textsc{s2sls-lag1} & 0.07 ± { 0.00} & n/a \\
+ &  & \textsc{spatial+} & 0.10 ± { 0.02} & n/a \\
+ &  & \textsc{spatial} & 0.17 ± { 0.03} & n/a \\
 \cline{2-5}
- & \multirow[t]{15}{*}{$q_{\text{summer}}$} & \textsc{cvae-\textsc{spatial+} (r=1) (l=1)} & 0.25 ± {\small 0.02} & 0.16 ± {\small 0.05} \\
- &  & \textsc{cvae-\textsc{spatial+} (r=1) (l=2)} & 0.19 ± {\small 0.03} & 0.11 ± {\small 0.05} \\
- &  & \textsc{cvae-\textsc{spatial+} (r=1) (l=4)} & 0.15 ± {\small 0.04} & 0.09 ± {\small 0.04} \\
- &  & \textsc{cvae-\textsc{spatial+} (r=1) (l=8)} & 0.08 ± {\small 0.05} & 0.13 ± {\small 0.05} \\
- &  & \textsc{cvae-\textsc{spatial+} (r=1) (l=32)} & \bf 0.06 ± {\small 0.02} & 0.27 ± {\small 0.06} \\
- &  & \textsc{cvae-\textsc{spatial+} (r=2) (l=1)} & 0.26 ± {\small 0.02} & 0.41 ± {\small 0.05} \\
- &  & \textsc{cvae-\textsc{spatial+} (r=2) (l=2)} & 0.23 ± {\small 0.03} & 0.33 ± {\small 0.06} \\
- &  & \textsc{cvae-\textsc{spatial+} (r=2) (l=4)} & 0.13 ± {\small 0.02} & 0.17 ± {\small 0.06} \\
- &  & \textsc{cvae-\textsc{spatial+} (r=2) (l=8)} & 0.09 ± {\small 0.02} & 0.09 ± {\small 0.04} \\
- &  & \textsc{cvae-\textsc{spatial+} (r=2) (l=32)} & 0.06 ± {\small 0.04} & \bf 0.08 ± {\small 0.02} \\
- &  & \textsc{dapsm} & 0.20 ± {\small 0.01} & n/a \\
- &  & \textsc{gcnn} & 0.16 ± {\small 0.05} & n/a \\
- &  & \textsc{s2sls-lag1} & 0.09 ± {\small 0.00} & n/a \\
- &  & \textsc{spatial+} & 0.11 ± {\small 0.02} & n/a \\
- &  & \textsc{spatial} & 0.17 ± {\small 0.03} & n/a \\
+ & \multirow[t]{23}{*}{$q_{\text{summer}}$} & \textsc{cvae-spatial+ (r=0) (z=1)} & 0.23 ± { 0.02} & n/a \\
+ &  & \textsc{cvae-spatial+ (r=0) (z=2)} & 0.20 ± { 0.02} & n/a \\
+ &  & \textsc{cvae-spatial+ (r=0) (z=4)} & 0.14 ± { 0.03} & n/a \\
+ &  & \textsc{cvae-spatial+ (r=0) (z=8)} & \bf 0.05 ± { 0.02} & n/a \\
+ &  & \textsc{cvae-spatial+ (r=0) (z=16)} & 0.09 ± { 0.04} & n/a \\
+ &  & \textsc{cvae-spatial+ (r=0) (z=32)} & 0.21 ± { 0.03} & n/a \\
+ &  & \textsc{cvae-spatial+ (r=1) (z=1)} & 0.25 ± { 0.02} & 0.16 ± { 0.05} \\
+ &  & \textsc{cvae-spatial+ (r=1) (z=2)} & 0.19 ± { 0.03} & 0.11 ± { 0.05} \\
+ &  & \textsc{cvae-spatial+ (r=1) (z=4)} & 0.15 ± { 0.04} & 0.09 ± { 0.04} \\
+ &  & \textsc{cvae-spatial+ (r=1) (z=8)} & 0.08 ± { 0.05} & 0.13 ± { 0.05} \\
+ &  & \textsc{cvae-spatial+ (r=1) (z=16)} & 0.06 ± { 0.02} & 0.10 ± { 0.04} \\
+ &  & \textsc{cvae-spatial+ (r=1) (z=32)} & 0.06 ± { 0.02} & 0.27 ± { 0.06} \\
+ &  & \textsc{cvae-spatial+ (r=2) (z=1)} & 0.26 ± { 0.02} & 0.41 ± { 0.05} \\
+ &  & \textsc{cvae-spatial+ (r=2) (z=2)} & 0.23 ± { 0.03} & 0.33 ± { 0.06} \\
+ &  & \textsc{cvae-spatial+ (r=2) (z=4)} & 0.13 ± { 0.02} & 0.17 ± { 0.06} \\
+ &  & \textsc{cvae-spatial+ (r=2) (z=8)} & 0.09 ± { 0.02} & 0.09 ± { 0.04} \\
+ &  & \textsc{cvae-spatial+ (r=2) (z=16)} & 0.09 ± { 0.02} & 0.08 ± { 0.04} \\
+ &  & \textsc{cvae-spatial+ (r=2) (z=32)} & 0.06 ± { 0.02} & \bf 0.07 ± { 0.03} \\
+ &  & \textsc{dapsm} & 0.20 ± { 0.01} & n/a \\
+ &  & \textsc{gcnn} & 0.16 ± { 0.05} & n/a \\
+ &  & \textsc{s2sls-lag1} & 0.09 ± { 0.00} & n/a \\
+ &  & \textsc{spatial+} & 0.11 ± { 0.02} & n/a \\
+ &  & \textsc{spatial} & 0.17 ± { 0.03} & n/a \\
 \cline{1-5} \cline{2-5}
-\multirow[t]{30}{*}{$ (LC)\; SO\_{4} \;\to\; PM\_{2.5}\; (r=1) $} & \multirow[t]{15}{*}{$ NH\_{4} $} & \textsc{cvae-\textsc{spatial+} (r=1) (l=1)} & 0.08 ± {\small 0.04} & 0.71 ± {\small 0.07} \\
- &  & \textsc{cvae-\textsc{spatial+} (r=1) (l=2)} & 0.14 ± {\small 0.03} & 0.54 ± {\small 0.03} \\
- &  & \textsc{cvae-\textsc{spatial+} (r=1) (l=4)} & 0.22 ± {\small 0.08} & 0.51 ± {\small 0.06} \\
- &  & \textsc{cvae-\textsc{spatial+} (r=1) (l=8)} & 0.44 ± {\small 0.06} & 0.34 ± {\small 0.05} \\
- &  & \textsc{cvae-\textsc{spatial+} (r=1) (l=32)} & 0.38 ± {\small 0.14} & 0.21 ± {\small 0.10} \\
- &  & \textsc{cvae-\textsc{spatial+} (r=2) (l=1)} & 0.11 ± {\small 0.04} & 1.04 ± {\small 0.06} \\
- &  & \textsc{cvae-\textsc{spatial+} (r=2) (l=2)} & \bf 0.07 ± {\small 0.04} & 0.84 ± {\small 0.08} \\
- &  & \textsc{cvae-\textsc{spatial+} (r=2) (l=4)} & 0.12 ± {\small 0.06} & 0.44 ± {\small 0.11} \\
- &  & \textsc{cvae-\textsc{spatial+} (r=2) (l=8)} & 0.23 ± {\small 0.09} & 0.20 ± {\small 0.07} \\
- &  & \textsc{cvae-\textsc{spatial+} (r=2) (l=32)} & 0.28 ± {\small 0.06} & \bf 0.11 ± {\small 0.05} \\
- &  & \textsc{dapsm} & 1.44 ± {\small 0.00} & n/a \\
- &  & \textsc{gcnn} & 0.52 ± {\small 0.16} & n/a \\
- &  & \textsc{s2sls-lag1} & 0.09 ± {\small 0.00} & n/a \\
- &  & \textsc{spatial+} & 0.11 ± {\small 0.03} & n/a \\
- &  & \textsc{spatial} & 0.08 ± {\small 0.02} & n/a \\
+\multirow[t]{46}{*}{$ (LC)\; SO\_{4} \;\to\; PM\_{2.5}\; (r=1) $} & \multirow[t]{23}{*}{$ NH\_{4} $} & \textsc{cvae-spatial+ (r=0) (z=1)} & 0.13 ± { 0.03} & n/a \\
+ &  & \textsc{cvae-spatial+ (r=0) (z=2)} & 0.09 ± { 0.03} & n/a \\
+ &  & \textsc{cvae-spatial+ (r=0) (z=4)} & 0.14 ± { 0.04} & n/a \\
+ &  & \textsc{cvae-spatial+ (r=0) (z=8)} & 0.32 ± { 0.05} & n/a \\
+ &  & \textsc{cvae-spatial+ (r=0) (z=16)} & 0.54 ± { 0.04} & n/a \\
+ &  & \textsc{cvae-spatial+ (r=0) (z=32)} & 0.78 ± { 0.03} & n/a \\
+ &  & \textsc{cvae-spatial+ (r=1) (z=1)} & 0.08 ± { 0.04} & 0.71 ± { 0.07} \\
+ &  & \textsc{cvae-spatial+ (r=1) (z=2)} & 0.14 ± { 0.03} & 0.54 ± { 0.03} \\
+ &  & \textsc{cvae-spatial+ (r=1) (z=4)} & 0.22 ± { 0.08} & 0.51 ± { 0.06} \\
+ &  & \textsc{cvae-spatial+ (r=1) (z=8)} & 0.44 ± { 0.06} & 0.34 ± { 0.05} \\
+ &  & \textsc{cvae-spatial+ (r=1) (z=16)} & 0.39 ± { 0.10} & 0.29 ± { 0.13} \\
+ &  & \textsc{cvae-spatial+ (r=1) (z=32)} & 0.38 ± { 0.14} & 0.21 ± { 0.10} \\
+ &  & \textsc{cvae-spatial+ (r=2) (z=1)} & 0.11 ± { 0.04} & 1.04 ± { 0.06} \\
+ &  & \textsc{cvae-spatial+ (r=2) (z=2)} & \bf 0.07 ± { 0.04} & 0.84 ± { 0.08} \\
+ &  & \textsc{cvae-spatial+ (r=2) (z=4)} & 0.16 ± { 0.04} & 0.45 ± { 0.12} \\
+ &  & \textsc{cvae-spatial+ (r=2) (z=8)} & 0.23 ± { 0.09} & 0.20 ± { 0.07} \\
+ &  & \textsc{cvae-spatial+ (r=2) (z=16)} & 0.29 ± { 0.10} & 0.18 ± { 0.07} \\
+ &  & \textsc{cvae-spatial+ (r=2) (z=32)} & 0.28 ± { 0.06} & \bf 0.11 ± { 0.05} \\
+ &  & \textsc{dapsm} & 1.44 ± { 0.00} & n/a \\
+ &  & \textsc{gcnn} & 0.52 ± { 0.16} & n/a \\
+ &  & \textsc{s2sls-lag1} & 0.09 ± { 0.00} & n/a \\
+ &  & \textsc{spatial+} & 0.11 ± { 0.03} & n/a \\
+ &  & \textsc{spatial} & 0.08 ± { 0.02} & n/a \\
 \cline{2-5}
- & \multirow[t]{15}{*}{OC} & \textsc{cvae-\textsc{spatial+} (r=1) (l=1)} & 0.06 ± {\small 0.03} & 0.65 ± {\small 0.04} \\
- &  & \textsc{cvae-\textsc{spatial+} (r=1) (l=2)} & 0.10 ± {\small 0.04} & 0.46 ± {\small 0.07} \\
- &  & \textsc{cvae-\textsc{spatial+} (r=1) (l=4)} & 0.22 ± {\small 0.05} & 0.43 ± {\small 0.09} \\
- &  & \textsc{cvae-\textsc{spatial+} (r=1) (l=8)} & 0.43 ± {\small 0.07} & 0.29 ± {\small 0.08} \\
- &  & \textsc{cvae-\textsc{spatial+} (r=1) (l=32)} & 0.34 ± {\small 0.10} & \bf 0.15 ± {\small 0.04} \\
- &  & \textsc{cvae-\textsc{spatial+} (r=2) (l=1)} & 0.14 ± {\small 0.04} & 1.05 ± {\small 0.05} \\
- &  & \textsc{cvae-\textsc{spatial+} (r=2) (l=2)} & 0.07 ± {\small 0.03} & 0.81 ± {\small 0.10} \\
- &  & \textsc{cvae-\textsc{spatial+} (r=2) (l=4)} & 0.13 ± {\small 0.05} & 0.43 ± {\small 0.13} \\
- &  & \textsc{cvae-\textsc{spatial+} (r=2) (l=8)} & 0.21 ± {\small 0.07} & 0.15 ± {\small 0.06} \\
- &  & \textsc{cvae-\textsc{spatial+} (r=2) (l=32)} & 0.25 ± {\small 0.05} & 0.16 ± {\small 0.08} \\
- &  & \textsc{dapsm} & 1.45 ± {\small 0.00} & n/a \\
- &  & \textsc{gcnn} & 0.77 ± {\small 0.22} & n/a \\
- &  & \textsc{s2sls-lag1} & \bf 0.00 ± {\small 0.00} & n/a \\
- &  & \textsc{spatial+} & 0.11 ± {\small 0.03} & n/a \\
- &  & \textsc{spatial} & 0.08 ± {\small 0.02} & n/a \\
+ & \multirow[t]{23}{*}{OC} & \textsc{cvae-spatial+ (r=0) (z=1)} & 0.15 ± { 0.03} & n/a \\
+ &  & \textsc{cvae-spatial+ (r=0) (z=2)} & 0.11 ± { 0.04} & n/a \\
+ &  & \textsc{cvae-spatial+ (r=0) (z=4)} & 0.05 ± { 0.02} & n/a \\
+ &  & \textsc{cvae-spatial+ (r=0) (z=8)} & 0.20 ± { 0.04} & n/a \\
+ &  & \textsc{cvae-spatial+ (r=0) (z=16)} & 0.36 ± { 0.03} & n/a \\
+ &  & \textsc{cvae-spatial+ (r=0) (z=32)} & 0.57 ± { 0.03} & n/a \\
+ &  & \textsc{cvae-spatial+ (r=1) (z=1)} & 0.06 ± { 0.03} & 0.65 ± { 0.04} \\
+ &  & \textsc{cvae-spatial+ (r=1) (z=2)} & 0.10 ± { 0.04} & 0.46 ± { 0.07} \\
+ &  & \textsc{cvae-spatial+ (r=1) (z=4)} & 0.22 ± { 0.05} & 0.43 ± { 0.09} \\
+ &  & \textsc{cvae-spatial+ (r=1) (z=8)} & 0.43 ± { 0.07} & 0.29 ± { 0.08} \\
+ &  & \textsc{cvae-spatial+ (r=1) (z=16)} & 0.37 ± { 0.10} & 0.19 ± { 0.11} \\
+ &  & \textsc{cvae-spatial+ (r=1) (z=32)} & 0.34 ± { 0.10} & \bf 0.15 ± { 0.04} \\
+ &  & \textsc{cvae-spatial+ (r=2) (z=1)} & 0.14 ± { 0.04} & 1.05 ± { 0.05} \\
+ &  & \textsc{cvae-spatial+ (r=2) (z=2)} & 0.07 ± { 0.03} & 0.81 ± { 0.10} \\
+ &  & \textsc{cvae-spatial+ (r=2) (z=4)} & 0.11 ± { 0.05} & 0.38 ± { 0.08} \\
+ &  & \textsc{cvae-spatial+ (r=2) (z=8)} & 0.21 ± { 0.07} & 0.15 ± { 0.06} \\
+ &  & \textsc{cvae-spatial+ (r=2) (z=16)} & 0.32 ± { 0.13} & 0.30 ± { 0.11} \\
+ &  & \textsc{cvae-spatial+ (r=2) (z=32)} & 0.25 ± { 0.05} & 0.16 ± { 0.08} \\
+ &  & \textsc{dapsm} & 1.45 ± { 0.00} & n/a \\
+ &  & \textsc{gcnn} & 0.77 ± { 0.22} & n/a \\
+ &  & \textsc{s2sls-lag1} & \bf 0.00 ± { 0.00} & n/a \\
+ &  & \textsc{spatial+} & 0.11 ± { 0.03} & n/a \\
+ &  & \textsc{spatial} & 0.08 ± { 0.02} & n/a \\
 \cline{1-5} \cline{2-5}
-\multirow[t]{30}{*}{$ (LC)\; SO\_{4} \;\to\; PM\_{2.5}\; (r=2) $} & \multirow[t]{15}{*}{$ NH\_{4} $} & \textsc{cvae-\textsc{spatial+} (r=1) (l=1)} & 0.29 ± {\small 0.04} & 0.30 ± {\small 0.06} \\
- &  & \textsc{cvae-\textsc{spatial+} (r=1) (l=2)} & 0.17 ± {\small 0.08} & 0.20 ± {\small 0.04} \\
- &  & \textsc{cvae-\textsc{spatial+} (r=1) (l=4)} & \bf 0.09 ± {\small 0.03} & 0.12 ± {\small 0.05} \\
- &  & \textsc{cvae-\textsc{spatial+} (r=1) (l=8)} & 0.15 ± {\small 0.04} & \bf 0.08 ± {\small 0.04} \\
- &  & \textsc{cvae-\textsc{spatial+} (r=1) (l=32)} & 0.13 ± {\small 0.07} & 0.26 ± {\small 0.09} \\
- &  & \textsc{cvae-\textsc{spatial+} (r=2) (l=1)} & 0.32 ± {\small 0.05} & 0.63 ± {\small 0.05} \\
- &  & \textsc{cvae-\textsc{spatial+} (r=2) (l=2)} & 0.24 ± {\small 0.06} & 0.48 ± {\small 0.11} \\
- &  & \textsc{cvae-\textsc{spatial+} (r=2) (l=4)} & 0.10 ± {\small 0.05} & 0.12 ± {\small 0.04} \\
- &  & \textsc{cvae-\textsc{spatial+} (r=2) (l=8)} & 0.14 ± {\small 0.05} & 0.17 ± {\small 0.11} \\
- &  & \textsc{cvae-\textsc{spatial+} (r=2) (l=32)} & 0.12 ± {\small 0.07} & 0.24 ± {\small 0.07} \\
- &  & \textsc{dapsm} & 1.23 ± {\small 0.00} & n/a \\
- &  & \textsc{gcnn} & 0.26 ± {\small 0.09} & n/a \\
- &  & \textsc{s2sls-lag1} & 0.10 ± {\small 0.00} & n/a \\
- &  & \textsc{spatial+} & 0.13 ± {\small 0.07} & n/a \\
- &  & \textsc{spatial} & 0.29 ± {\small 0.01} & n/a \\
+\multirow[t]{46}{*}{$ (LC)\; SO\_{4} \;\to\; PM\_{2.5}\; (r=2) $} & \multirow[t]{23}{*}{$ NH\_{4} $} & \textsc{cvae-spatial+ (r=0) (z=1)} & 0.33 ± { 0.03} & n/a \\
+ &  & \textsc{cvae-spatial+ (r=0) (z=2)} & 0.28 ± { 0.05} & n/a \\
+ &  & \textsc{cvae-spatial+ (r=0) (z=4)} & 0.11 ± { 0.03} & n/a \\
+ &  & \textsc{cvae-spatial+ (r=0) (z=8)} & 0.12 ± { 0.03} & n/a \\
+ &  & \textsc{cvae-spatial+ (r=0) (z=16)} & 0.26 ± { 0.05} & n/a \\
+ &  & \textsc{cvae-spatial+ (r=0) (z=32)} & 0.47 ± { 0.04} & n/a \\
+ &  & \textsc{cvae-spatial+ (r=1) (z=1)} & 0.29 ± { 0.04} & 0.30 ± { 0.06} \\
+ &  & \textsc{cvae-spatial+ (r=1) (z=2)} & 0.17 ± { 0.08} & 0.20 ± { 0.04} \\
+ &  & \textsc{cvae-spatial+ (r=1) (z=4)} & \bf 0.09 ± { 0.03} & 0.12 ± { 0.05} \\
+ &  & \textsc{cvae-spatial+ (r=1) (z=8)} & 0.15 ± { 0.04} & \bf 0.08 ± { 0.04} \\
+ &  & \textsc{cvae-spatial+ (r=1) (z=16)} & 0.18 ± { 0.06} & 0.14 ± { 0.07} \\
+ &  & \textsc{cvae-spatial+ (r=1) (z=32)} & 0.13 ± { 0.07} & 0.26 ± { 0.09} \\
+ &  & \textsc{cvae-spatial+ (r=2) (z=1)} & 0.32 ± { 0.05} & 0.63 ± { 0.05} \\
+ &  & \textsc{cvae-spatial+ (r=2) (z=2)} & 0.24 ± { 0.06} & 0.48 ± { 0.11} \\
+ &  & \textsc{cvae-spatial+ (r=2) (z=4)} & 0.20 ± { 0.06} & 0.23 ± { 0.08} \\
+ &  & \textsc{cvae-spatial+ (r=2) (z=8)} & 0.14 ± { 0.05} & 0.17 ± { 0.11} \\
+ &  & \textsc{cvae-spatial+ (r=2) (z=16)} & 0.16 ± { 0.11} & 0.40 ± { 0.12} \\
+ &  & \textsc{cvae-spatial+ (r=2) (z=32)} & 0.12 ± { 0.07} & 0.24 ± { 0.07} \\
+ &  & \textsc{dapsm} & 1.23 ± { 0.00} & n/a \\
+ &  & \textsc{gcnn} & 0.26 ± { 0.09} & n/a \\
+ &  & \textsc{s2sls-lag1} & 0.10 ± { 0.00} & n/a \\
+ &  & \textsc{spatial+} & 0.13 ± { 0.07} & n/a \\
+ &  & \textsc{spatial} & 0.29 ± { 0.01} & n/a \\
 \cline{2-5}
- & \multirow[t]{15}{*}{OC} & \textsc{cvae-\textsc{spatial+} (r=1) (l=1)} & 0.29 ± {\small 0.05} & 0.31 ± {\small 0.06} \\
- &  & \textsc{cvae-\textsc{spatial+} (r=1) (l=2)} & 0.22 ± {\small 0.07} & 0.19 ± {\small 0.06} \\
- &  & \textsc{cvae-\textsc{spatial+} (r=1) (l=4)} & \bf 0.09 ± {\small 0.04} & \bf 0.08 ± {\small 0.03} \\
- &  & \textsc{cvae-\textsc{spatial+} (r=1) (l=8)} & 0.16 ± {\small 0.06} & 0.09 ± {\small 0.06} \\
- &  & \textsc{cvae-\textsc{spatial+} (r=1) (l=32)} & 0.20 ± {\small 0.07} & 0.32 ± {\small 0.12} \\
- &  & \textsc{cvae-\textsc{spatial+} (r=2) (l=1)} & 0.36 ± {\small 0.02} & 0.67 ± {\small 0.04} \\
- &  & \textsc{cvae-\textsc{spatial+} (r=2) (l=2)} & 0.21 ± {\small 0.05} & 0.34 ± {\small 0.11} \\
- &  & \textsc{cvae-\textsc{spatial+} (r=2) (l=4)} & 0.16 ± {\small 0.05} & 0.09 ± {\small 0.06} \\
- &  & \textsc{cvae-\textsc{spatial+} (r=2) (l=8)} & 0.13 ± {\small 0.05} & 0.23 ± {\small 0.11} \\
- &  & \textsc{cvae-\textsc{spatial+} (r=2) (l=32)} & 0.09 ± {\small 0.04} & 0.52 ± {\small 0.08} \\
- &  & \textsc{dapsm} & 1.24 ± {\small 0.01} & n/a \\
- &  & \textsc{gcnn} & 0.30 ± {\small 0.10} & n/a \\
- &  & \textsc{s2sls-lag1} & 0.21 ± {\small 0.00} & n/a \\
- &  & \textsc{spatial+} & 0.13 ± {\small 0.07} & n/a \\
- &  & \textsc{spatial} & 0.29 ± {\small 0.01} & n/a \\
+ & \multirow[t]{23}{*}{OC} & \textsc{cvae-spatial+ (r=0) (z=1)} & 0.35 ± { 0.02} & n/a \\
+ &  & \textsc{cvae-spatial+ (r=0) (z=2)} & 0.32 ± { 0.04} & n/a \\
+ &  & \textsc{cvae-spatial+ (r=0) (z=4)} & 0.18 ± { 0.03} & n/a \\
+ &  & \textsc{cvae-spatial+ (r=0) (z=8)} & \bf 0.08 ± { 0.04} & n/a \\
+ &  & \textsc{cvae-spatial+ (r=0) (z=16)} & 0.09 ± { 0.02} & n/a \\
+ &  & \textsc{cvae-spatial+ (r=0) (z=32)} & 0.27 ± { 0.03} & n/a \\
+ &  & \textsc{cvae-spatial+ (r=1) (z=1)} & 0.29 ± { 0.05} & 0.31 ± { 0.06} \\
+ &  & \textsc{cvae-spatial+ (r=1) (z=2)} & 0.22 ± { 0.07} & 0.19 ± { 0.06} \\
+ &  & \textsc{cvae-spatial+ (r=1) (z=4)} & 0.09 ± { 0.04} & \bf 0.08 ± { 0.03} \\
+ &  & \textsc{cvae-spatial+ (r=1) (z=8)} & 0.16 ± { 0.06} & 0.09 ± { 0.06} \\
+ &  & \textsc{cvae-spatial+ (r=1) (z=16)} & 0.22 ± { 0.08} & 0.21 ± { 0.08} \\
+ &  & \textsc{cvae-spatial+ (r=1) (z=32)} & 0.20 ± { 0.07} & 0.32 ± { 0.12} \\
+ &  & \textsc{cvae-spatial+ (r=2) (z=1)} & 0.36 ± { 0.02} & 0.67 ± { 0.04} \\
+ &  & \textsc{cvae-spatial+ (r=2) (z=2)} & 0.21 ± { 0.05} & 0.34 ± { 0.11} \\
+ &  & \textsc{cvae-spatial+ (r=2) (z=4)} & 0.15 ± { 0.04} & 0.11 ± { 0.04} \\
+ &  & \textsc{cvae-spatial+ (r=2) (z=8)} & 0.13 ± { 0.05} & 0.23 ± { 0.11} \\
+ &  & \textsc{cvae-spatial+ (r=2) (z=16)} & 0.18 ± { 0.06} & 0.45 ± { 0.16} \\
+ &  & \textsc{cvae-spatial+ (r=2) (z=32)} & 0.09 ± { 0.04} & 0.52 ± { 0.08} \\
+ &  & \textsc{dapsm} & 1.24 ± { 0.01} & n/a \\
+ &  & \textsc{gcnn} & 0.30 ± { 0.10} & n/a \\
+ &  & \textsc{s2sls-lag1} & 0.21 ± { 0.00} & n/a \\
+ &  & \textsc{spatial+} & 0.13 ± { 0.07} & n/a \\
+ &  & \textsc{spatial} & 0.29 ± { 0.01} & n/a \\
 \cline{1-5} \cline{2-5}
-\multirow[t]{14}{*}{$ (SC)\; PM\_{2.5} \;\to\; m \;(r=1) $} & \multirow[t]{7}{*}{$\rho_{\text{pop}}$} & \textsc{cvae-unet (r=1)} & 0.06 ± {\small 0.03} & 0.16 ± {\small 0.06} \\
- &  & \textsc{cvae-unet (r=2)} & 0.06 ± {\small 0.02} & \bf 0.10 ± {\small 0.05} \\
- &  & \textsc{dapsm} & 0.20 ± {\small 0.01} & n/a \\
- &  & \textsc{gcnn} & 0.17 ± {\small 0.06} & n/a \\
- &  & \textsc{s2sls-lag1} & \bf 0.05 ± {\small 0.00} & n/a \\
- &  & \textsc{spatial+} & 0.27 ± {\small 0.18} & n/a \\
- &  & \textsc{spatial} & 0.06 ± {\small 0.06} & n/a \\
+\multirow[t]{38}{*}{$ (SC)\; PM\_{2.5} \;\to\; m \;(r=1) $} & \multirow[t]{19}{*}{$\rho_{\text{pop}}$} & \textsc{cvae-unet (r=0) (z=8)} & 0.05 ± { 0.03} & n/a \\
+ &  & \textsc{cvae-unet (r=1) (z=1)} & 0.05 ± { 0.02} & 0.20 ± { 0.07} \\
+ &  & \textsc{cvae-unet (r=1) (z=2)} & 0.06 ± { 0.01} & 0.20 ± { 0.07} \\
+ &  & \textsc{cvae-unet (r=1) (z=4)} & 0.04 ± { 0.02} & 0.21 ± { 0.06} \\
+ &  & \textsc{cvae-unet (r=1) (z=8)} & 0.04 ± { 0.02} & \bf 0.10 ± { 0.03} \\
+ &  & \textsc{cvae-unet (r=1) (z=16)} & 0.04 ± { 0.02} & 0.12 ± { 0.05} \\
+ &  & \textsc{cvae-unet (r=1) (z=32)} & \bf 0.03 ± { 0.01} & 0.11 ± { 0.04} \\
+ &  & \textsc{cvae-unet (r=2) (z=1)} & 0.04 ± { 0.01} & 0.15 ± { 0.04} \\
+ &  & \textsc{cvae-unet (r=2) (z=2)} & 0.04 ± { 0.01} & 0.19 ± { 0.10} \\
+ &  & \textsc{cvae-unet (r=2) (z=4)} & \bf 0.03 ± { 0.01} & 0.12 ± { 0.05} \\
+ &  & \textsc{cvae-unet (r=2) (z=8)} & 0.04 ± { 0.01} & 0.14 ± { 0.05} \\
+ &  & \textsc{cvae-unet (r=2) (z=16)} & 0.04 ± { 0.01} & 0.16 ± { 0.09} \\
+ &  & \textsc{cvae-unet (r=2) (z=32)} & 0.04 ± { 0.02} & 0.17 ± { 0.08} \\
+ &  & \textsc{dapsm} & 0.20 ± { 0.01} & n/a \\
+ &  & \textsc{gcnn} & 0.17 ± { 0.06} & n/a \\
+ &  & \textsc{s2sls-lag1} & 0.05 ± { 0.00} & n/a \\
+ &  & \textsc{spatial+} & 0.27 ± { 0.18} & n/a \\
+ &  & \textsc{spatial} & 0.06 ± { 0.06} & n/a \\
+ &  & \textsc{unet} & 0.06 ± { 0.01} & 0.17 ± { 0.04} \\
 \cline{2-5}
- & \multirow[t]{7}{*}{$q_{\text{summer}}$} & \textsc{cvae-unet (r=1)} & 0.06 ± {\small 0.03} & 0.16 ± {\small 0.09} \\
- &  & \textsc{cvae-unet (r=2)} & \bf 0.04 ± {\small 0.01} & \bf 0.10 ± {\small 0.04} \\
- &  & \textsc{dapsm} & 0.28 ± {\small 0.04} & n/a \\
- &  & \textsc{gcnn} & 0.23 ± {\small 0.03} & n/a \\
- &  & \textsc{s2sls-lag1} & 0.16 ± {\small 0.00} & n/a \\
- &  & \textsc{spatial+} & 0.27 ± {\small 0.18} & n/a \\
- &  & \textsc{spatial} & 0.07 ± {\small 0.06} & n/a \\
+ & \multirow[t]{19}{*}{$q_{\text{summer}}$} & \textsc{cvae-unet (r=0) (z=8)} & 0.05 ± { 0.03} & n/a \\
+ &  & \textsc{cvae-unet (r=1) (z=1)} & 0.04 ± { 0.02} & 0.12 ± { 0.07} \\
+ &  & \textsc{cvae-unet (r=1) (z=2)} & 0.05 ± { 0.01} & 0.11 ± { 0.07} \\
+ &  & \textsc{cvae-unet (r=1) (z=4)} & 0.03 ± { 0.02} & 0.14 ± { 0.06} \\
+ &  & \textsc{cvae-unet (r=1) (z=8)} & 0.04 ± { 0.02} & 0.13 ± { 0.04} \\
+ &  & \textsc{cvae-unet (r=1) (z=16)} & 0.04 ± { 0.02} & 0.09 ± { 0.03} \\
+ &  & \textsc{cvae-unet (r=1) (z=32)} & 0.04 ± { 0.01} & \bf 0.08 ± { 0.04} \\
+ &  & \textsc{cvae-unet (r=2) (z=1)} & 0.04 ± { 0.01} & 0.12 ± { 0.05} \\
+ &  & \textsc{cvae-unet (r=2) (z=2)} & \bf 0.03 ± { 0.01} & 0.13 ± { 0.06} \\
+ &  & \textsc{cvae-unet (r=2) (z=4)} & \bf 0.03 ± { 0.01} & 0.11 ± { 0.04} \\
+ &  & \textsc{cvae-unet (r=2) (z=8)} & 0.05 ± { 0.01} & 0.14 ± { 0.07} \\
+ &  & \textsc{cvae-unet (r=2) (z=16)} & 0.04 ± { 0.01} & 0.09 ± { 0.04} \\
+ &  & \textsc{cvae-unet (r=2) (z=32)} & \bf 0.03 ± { 0.01} & 0.16 ± { 0.07} \\
+ &  & \textsc{dapsm} & 0.28 ± { 0.04} & n/a \\
+ &  & \textsc{gcnn} & 0.23 ± { 0.03} & n/a \\
+ &  & \textsc{s2sls-lag1} & 0.16 ± { 0.00} & n/a \\
+ &  & \textsc{spatial+} & 0.27 ± { 0.18} & n/a \\
+ &  & \textsc{spatial} & 0.07 ± { 0.06} & n/a \\
+ &  & \textsc{unet} & 0.04 ± { 0.01} & 0.10 ± { 0.05} \\
 \cline{1-5} \cline{2-5}
-\multirow[t]{14}{*}{$ (SC)\; PM\_{2.5} \;\to\; m \;(r=2) $} & \multirow[t]{7}{*}{$\rho_{\text{pop}}$} & \textsc{cvae-unet (r=1)} & 0.13 ± {\small 0.04} & \bf 0.12 ± {\small 0.05} \\
- &  & \textsc{cvae-unet (r=2)} & 0.17 ± {\small 0.02} & 0.17 ± {\small 0.08} \\
- &  & \textsc{dapsm} & 0.15 ± {\small 0.02} & n/a \\
- &  & \textsc{gcnn} & 0.15 ± {\small 0.04} & n/a \\
- &  & \textsc{s2sls-lag1} & 0.06 ± {\small 0.00} & n/a \\
- &  & \textsc{spatial+} & 0.08 ± {\small 0.04} & n/a \\
- &  & \textsc{spatial} & \bf 0.05 ± {\small 0.02} & n/a \\
+\multirow[t]{38}{*}{$ (SC)\; PM\_{2.5} \;\to\; m \;(r=2) $} & \multirow[t]{19}{*}{$\rho_{\text{pop}}$} & \textsc{cvae-unet (r=0) (z=8)} & 0.09 ± { 0.03} & n/a \\
+ &  & \textsc{cvae-unet (r=1) (z=1)} & 0.15 ± { 0.01} & 0.12 ± { 0.03} \\
+ &  & \textsc{cvae-unet (r=1) (z=2)} & 0.14 ± { 0.01} & 0.12 ± { 0.04} \\
+ &  & \textsc{cvae-unet (r=1) (z=4)} & 0.14 ± { 0.01} & 0.09 ± { 0.05} \\
+ &  & \textsc{cvae-unet (r=1) (z=8)} & 0.14 ± { 0.01} & 0.10 ± { 0.03} \\
+ &  & \textsc{cvae-unet (r=1) (z=16)} & 0.15 ± { 0.01} & 0.12 ± { 0.04} \\
+ &  & \textsc{cvae-unet (r=1) (z=32)} & 0.14 ± { 0.02} & 0.15 ± { 0.07} \\
+ &  & \textsc{cvae-unet (r=2) (z=1)} & 0.15 ± { 0.01} & 0.14 ± { 0.06} \\
+ &  & \textsc{cvae-unet (r=2) (z=2)} & 0.15 ± { 0.01} & \bf 0.09 ± { 0.04} \\
+ &  & \textsc{cvae-unet (r=2) (z=4)} & 0.15 ± { 0.01} & 0.12 ± { 0.05} \\
+ &  & \textsc{cvae-unet (r=2) (z=8)} & 0.16 ± { 0.01} & 0.11 ± { 0.06} \\
+ &  & \textsc{cvae-unet (r=2) (z=16)} & 0.15 ± { 0.01} & 0.11 ± { 0.04} \\
+ &  & \textsc{cvae-unet (r=2) (z=32)} & 0.15 ± { 0.01} & 0.09 ± { 0.05} \\
+ &  & \textsc{dapsm} & 0.15 ± { 0.02} & n/a \\
+ &  & \textsc{gcnn} & 0.15 ± { 0.04} & n/a \\
+ &  & \textsc{s2sls-lag1} & 0.06 ± { 0.00} & n/a \\
+ &  & \textsc{spatial+} & 0.08 ± { 0.04} & n/a \\
+ &  & \textsc{spatial} & \bf 0.05 ± { 0.02} & n/a \\
+ &  & \textsc{unet} & 0.15 ± { 0.01} & 0.15 ± { 0.03} \\
 \cline{2-5}
- & \multirow[t]{7}{*}{$q_{\text{summer}}$} & \textsc{cvae-unet (r=1)} & 0.11 ± {\small 0.03} & 0.11 ± {\small 0.04} \\
- &  & \textsc{cvae-unet (r=2)} & 0.16 ± {\small 0.02} & \bf 0.08 ± {\small 0.04} \\
- &  & \textsc{dapsm} & 0.21 ± {\small 0.01} & n/a \\
- &  & \textsc{gcnn} & 0.23 ± {\small 0.03} & n/a \\
- &  & \textsc{s2sls-lag1} & 0.10 ± {\small 0.00} & n/a \\
- &  & \textsc{spatial+} & 0.07 ± {\small 0.03} & n/a \\
- &  & \textsc{spatial} & \bf 0.05 ± {\small 0.02} & n/a \\
+ & \multirow[t]{19}{*}{$q_{\text{summer}}$} & \textsc{cvae-unet (r=0) (z=8)} & 0.09 ± { 0.03} & n/a \\
+ &  & \textsc{cvae-unet (r=1) (z=1)} & 0.15 ± { 0.01} & 0.08 ± { 0.03} \\
+ &  & \textsc{cvae-unet (r=1) (z=2)} & 0.14 ± { 0.01} & 0.10 ± { 0.05} \\
+ &  & \textsc{cvae-unet (r=1) (z=4)} & 0.14 ± { 0.01} & 0.11 ± { 0.05} \\
+ &  & \textsc{cvae-unet (r=1) (z=8)} & 0.14 ± { 0.01} & \bf 0.07 ± { 0.03} \\
+ &  & \textsc{cvae-unet (r=1) (z=16)} & 0.14 ± { 0.01} & 0.08 ± { 0.03} \\
+ &  & \textsc{cvae-unet (r=1) (z=32)} & 0.14 ± { 0.01} & 0.07 ± { 0.04} \\
+ &  & \textsc{cvae-unet (r=2) (z=1)} & 0.15 ± { 0.00} & 0.10 ± { 0.04} \\
+ &  & \textsc{cvae-unet (r=2) (z=2)} & 0.15 ± { 0.01} & 0.12 ± { 0.06} \\
+ &  & \textsc{cvae-unet (r=2) (z=4)} & 0.15 ± { 0.01} & 0.12 ± { 0.03} \\
+ &  & \textsc{cvae-unet (r=2) (z=8)} & 0.15 ± { 0.01} & 0.08 ± { 0.04} \\
+ &  & \textsc{cvae-unet (r=2) (z=16)} & 0.14 ± { 0.01} & 0.16 ± { 0.07} \\
+ &  & \textsc{cvae-unet (r=2) (z=32)} & 0.14 ± { 0.01} & 0.12 ± { 0.07} \\
+ &  & \textsc{dapsm} & 0.21 ± { 0.01} & n/a \\
+ &  & \textsc{gcnn} & 0.23 ± { 0.03} & n/a \\
+ &  & \textsc{s2sls-lag1} & 0.10 ± { 0.00} & n/a \\
+ &  & \textsc{spatial+} & 0.07 ± { 0.03} & n/a \\
+ &  & \textsc{spatial} & \bf 0.05 ± { 0.02} & n/a \\
+ &  & \textsc{unet} & 0.15 ± { 0.00} & 0.08 ± { 0.04} \\
 \cline{1-5} \cline{2-5}
-\multirow[t]{14}{*}{$ (SC)\; SO\_{4} \;\to\; PM\_{2.5}\; (r=1) $} & \multirow[t]{7}{*}{$ NH\_{4} $} & \textsc{cvae-unet (r=1)} & 0.06 ± {\small 0.03} & \bf 0.23 ± {\small 0.04} \\
- &  & \textsc{cvae-unet (r=2)} & 0.07 ± {\small 0.02} & 0.34 ± {\small 0.07} \\
- &  & \textsc{dapsm} & 1.56 ± {\small 0.00} & n/a \\
- &  & \textsc{gcnn} & 0.55 ± {\small 0.09} & n/a \\
- &  & \textsc{s2sls-lag1} & 0.22 ± {\small 0.00} & n/a \\
- &  & \textsc{spatial+} & 0.06 ± {\small 0.05} & n/a \\
- &  & \textsc{spatial} & \bf 0.04 ± {\small 0.01} & n/a \\
+\multirow[t]{44}{*}{$ (SC)\; SO\_{4} \;\to\; PM\_{2.5}\; (r=1) $} & \multirow[t]{22}{*}{$ NH\_{4} $} & \textsc{cvae-unet (r=0) (z=1)} & 0.18 ± { 0.01} & n/a \\
+ &  & \textsc{cvae-unet (r=0) (z=8)} & 0.23 ± { 0.03} & n/a \\
+ &  & \textsc{cvae-unet (r=0) (z=16)} & 0.24 ± { 0.03} & n/a \\
+ &  & \textsc{cvae-unet (r=0) (z=32)} & 0.20 ± { 0.00} & n/a \\
+ &  & \textsc{cvae-unet (r=1) (z=1)} & 0.06 ± { 0.01} & 0.18 ± { 0.02} \\
+ &  & \textsc{cvae-unet (r=1) (z=2)} & 0.05 ± { 0.01} & \bf 0.14 ± { 0.04} \\
+ &  & \textsc{cvae-unet (r=1) (z=4)} & 0.05 ± { 0.02} & 0.16 ± { 0.03} \\
+ &  & \textsc{cvae-unet (r=1) (z=8)} & 0.04 ± { 0.02} & \bf 0.14 ± { 0.04} \\
+ &  & \textsc{cvae-unet (r=1) (z=16)} & 0.03 ± { 0.01} & 0.19 ± { 0.03} \\
+ &  & \textsc{cvae-unet (r=1) (z=32)} & \bf 0.02 ± { 0.01} & 0.17 ± { 0.02} \\
+ &  & \textsc{cvae-unet (r=2) (z=1)} & 0.06 ± { 0.01} & 0.29 ± { 0.04} \\
+ &  & \textsc{cvae-unet (r=2) (z=2)} & 0.06 ± { 0.00} & 0.31 ± { 0.05} \\
+ &  & \textsc{cvae-unet (r=2) (z=4)} & 0.05 ± { 0.00} & 0.32 ± { 0.02} \\
+ &  & \textsc{cvae-unet (r=2) (z=8)} & 0.05 ± { 0.01} & 0.28 ± { 0.04} \\
+ &  & \textsc{cvae-unet (r=2) (z=16)} & 0.05 ± { 0.01} & 0.31 ± { 0.02} \\
+ &  & \textsc{cvae-unet (r=2) (z=32)} & 0.04 ± { 0.01} & 0.28 ± { 0.03} \\
+ &  & \textsc{dapsm} & 1.56 ± { 0.00} & n/a \\
+ &  & \textsc{gcnn} & 0.55 ± { 0.09} & n/a \\
+ &  & \textsc{s2sls-lag1} & 0.22 ± { 0.00} & n/a \\
+ &  & \textsc{spatial+} & 0.06 ± { 0.05} & n/a \\
+ &  & \textsc{spatial} & 0.04 ± { 0.01} & n/a \\
+ &  & \textsc{unet} & 0.04 ± { 0.01} & 0.19 ± { 0.04} \\
 \cline{2-5}
- & \multirow[t]{7}{*}{OC} & \textsc{cvae-unet (r=1)} & 0.07 ± {\small 0.02} & \bf 0.14 ± {\small 0.06} \\
- &  & \textsc{cvae-unet (r=2)} & 0.06 ± {\small 0.02} & 0.32 ± {\small 0.06} \\
- &  & \textsc{dapsm} & 1.57 ± {\small 0.00} & n/a \\
- &  & \textsc{gcnn} & 0.42 ± {\small 0.15} & n/a \\
- &  & \textsc{s2sls-lag1} & 0.13 ± {\small 0.00} & n/a \\
- &  & \textsc{spatial+} & 0.06 ± {\small 0.05} & n/a \\
- &  & \textsc{spatial} & \bf 0.04 ± {\small 0.01} & n/a \\
+ & \multirow[t]{22}{*}{OC} & \textsc{cvae-unet (r=0) (z=1)} & 0.04 ± { 0.02} & n/a \\
+ &  & \textsc{cvae-unet (r=0) (z=8)} & 0.04 ± { 0.02} & n/a \\
+ &  & \textsc{cvae-unet (r=0) (z=16)} & 0.04 ± { 0.03} & n/a \\
+ &  & \textsc{cvae-unet (r=0) (z=32)} & \bf 0.01 ± { 0.00} & n/a \\
+ &  & \textsc{cvae-unet (r=1) (z=1)} & 0.09 ± { 0.01} & 0.06 ± { 0.02} \\
+ &  & \textsc{cvae-unet (r=1) (z=2)} & 0.07 ± { 0.01} & 0.08 ± { 0.03} \\
+ &  & \textsc{cvae-unet (r=1) (z=4)} & 0.06 ± { 0.02} & \bf 0.04 ± { 0.01} \\
+ &  & \textsc{cvae-unet (r=1) (z=8)} & 0.04 ± { 0.01} & 0.05 ± { 0.01} \\
+ &  & \textsc{cvae-unet (r=1) (z=16)} & 0.05 ± { 0.02} & 0.05 ± { 0.02} \\
+ &  & \textsc{cvae-unet (r=1) (z=32)} & 0.04 ± { 0.02} & 0.05 ± { 0.02} \\
+ &  & \textsc{cvae-unet (r=2) (z=1)} & 0.06 ± { 0.00} & 0.21 ± { 0.04} \\
+ &  & \textsc{cvae-unet (r=2) (z=2)} & 0.06 ± { 0.00} & 0.18 ± { 0.05} \\
+ &  & \textsc{cvae-unet (r=2) (z=4)} & 0.06 ± { 0.00} & 0.21 ± { 0.03} \\
+ &  & \textsc{cvae-unet (r=2) (z=8)} & 0.06 ± { 0.00} & 0.20 ± { 0.04} \\
+ &  & \textsc{cvae-unet (r=2) (z=16)} & 0.05 ± { 0.01} & 0.17 ± { 0.03} \\
+ &  & \textsc{cvae-unet (r=2) (z=32)} & 0.06 ± { 0.01} & 0.13 ± { 0.04} \\
+ &  & \textsc{dapsm} & 1.57 ± { 0.00} & n/a \\
+ &  & \textsc{gcnn} & 0.42 ± { 0.15} & n/a \\
+ &  & \textsc{s2sls-lag1} & 0.13 ± { 0.00} & n/a \\
+ &  & \textsc{spatial+} & 0.06 ± { 0.05} & n/a \\
+ &  & \textsc{spatial} & 0.04 ± { 0.01} & n/a \\
+ &  & \textsc{unet} & 0.07 ± { 0.02} & 0.05 ± { 0.02} \\
 \cline{1-5} \cline{2-5}
-\multirow[t]{14}{*}{$ (SC)\; SO\_{4} \;\to\; PM\_{2.5}\; (r=2) $} & \multirow[t]{7}{*}{$ NH\_{4} $} & \textsc{cvae-unet (r=1)} & 0.10 ± {\small 0.02} & \bf 0.09 ± {\small 0.03} \\
- &  & \textsc{cvae-unet (r=2)} & 0.12 ± {\small 0.03} & 0.12 ± {\small 0.05} \\
- &  & \textsc{dapsm} & 1.47 ± {\small 0.00} & n/a \\
- &  & \textsc{gcnn} & 0.66 ± {\small 0.21} & n/a \\
- &  & \textsc{s2sls-lag1} & 0.16 ± {\small 0.00} & n/a \\
- &  & \textsc{spatial+} & \bf 0.06 ± {\small 0.02} & n/a \\
- &  & \textsc{spatial} & 0.06 ± {\small 0.05} & n/a \\
+\multirow[t]{46}{*}{$ (SC)\; SO\_{4} \;\to\; PM\_{2.5}\; (r=2) $} & \multirow[t]{23}{*}{$ NH\_{4} $} & \textsc{cvae-unet (r=0) (z=2)} & 0.04 ± { 0.02} & n/a \\
+ &  & \textsc{cvae-unet (r=0) (z=4)} & \bf 0.02 ± { 0.00} & n/a \\
+ &  & \textsc{cvae-unet (r=0) (z=8)} & 0.04 ± { 0.02} & n/a \\
+ &  & \textsc{cvae-unet (r=0) (z=16)} & 0.03 ± { 0.01} & n/a \\
+ &  & \textsc{cvae-unet (r=0) (z=32)} & 0.04 ± { 0.02} & n/a \\
+ &  & \textsc{cvae-unet (r=1) (z=1)} & 0.14 ± { 0.01} & 0.04 ± { 0.01} \\
+ &  & \textsc{cvae-unet (r=1) (z=2)} & 0.14 ± { 0.01} & 0.06 ± { 0.02} \\
+ &  & \textsc{cvae-unet (r=1) (z=4)} & 0.14 ± { 0.01} & 0.04 ± { 0.02} \\
+ &  & \textsc{cvae-unet (r=1) (z=8)} & 0.13 ± { 0.01} & \bf 0.03 ± { 0.01} \\
+ &  & \textsc{cvae-unet (r=1) (z=16)} & 0.13 ± { 0.01} & \bf 0.03 ± { 0.01} \\
+ &  & \textsc{cvae-unet (r=1) (z=32)} & 0.14 ± { 0.00} & 0.05 ± { 0.02} \\
+ &  & \textsc{cvae-unet (r=2) (z=1)} & 0.15 ± { 0.01} & 0.07 ± { 0.01} \\
+ &  & \textsc{cvae-unet (r=2) (z=2)} & 0.15 ± { 0.00} & 0.10 ± { 0.03} \\
+ &  & \textsc{cvae-unet (r=2) (z=4)} & 0.15 ± { 0.01} & 0.08 ± { 0.03} \\
+ &  & \textsc{cvae-unet (r=2) (z=8)} & 0.14 ± { 0.01} & 0.05 ± { 0.02} \\
+ &  & \textsc{cvae-unet (r=2) (z=16)} & 0.15 ± { 0.00} & 0.06 ± { 0.03} \\
+ &  & \textsc{cvae-unet (r=2) (z=32)} & 0.15 ± { 0.00} & 0.04 ± { 0.02} \\
+ &  & \textsc{dapsm} & 1.47 ± { 0.00} & n/a \\
+ &  & \textsc{gcnn} & 0.66 ± { 0.21} & n/a \\
+ &  & \textsc{s2sls-lag1} & 0.16 ± { 0.00} & n/a \\
+ &  & \textsc{spatial+} & 0.06 ± { 0.02} & n/a \\
+ &  & \textsc{spatial} & 0.06 ± { 0.05} & n/a \\
+ &  & \textsc{unet} & 0.15 ± { 0.01} & 0.11 ± { 0.04} \\
 \cline{2-5}
- & \multirow[t]{7}{*}{OC} & \textsc{cvae-unet (r=1)} & 0.11 ± {\small 0.03} & \bf 0.09 ± {\small 0.05} \\
- &  & \textsc{cvae-unet (r=2)} & 0.13 ± {\small 0.04} & 0.11 ± {\small 0.05} \\
- &  & \textsc{dapsm} & 1.49 ± {\small 0.01} & n/a \\
- &  & \textsc{gcnn} & 0.67 ± {\small 0.12} & n/a \\
- &  & \textsc{s2sls-lag1} & 0.09 ± {\small 0.00} & n/a \\
- &  & \textsc{spatial+} & \bf 0.05 ± {\small 0.02} & n/a \\
- &  & \textsc{spatial} & 0.06 ± {\small 0.05} & n/a \\
+ & \multirow[t]{23}{*}{OC} & \textsc{cvae-unet (r=0) (z=2)} & 0.06 ± { 0.02} & n/a \\
+ &  & \textsc{cvae-unet (r=0) (z=4)} & \bf 0.03 ± { 0.02} & n/a \\
+ &  & \textsc{cvae-unet (r=0) (z=8)} & 0.08 ± { 0.02} & n/a \\
+ &  & \textsc{cvae-unet (r=0) (z=16)} & 0.10 ± { 0.02} & n/a \\
+ &  & \textsc{cvae-unet (r=0) (z=32)} & 0.09 ± { 0.02} & n/a \\
+ &  & \textsc{cvae-unet (r=1) (z=1)} & 0.15 ± { 0.01} & 0.06 ± { 0.04} \\
+ &  & \textsc{cvae-unet (r=1) (z=2)} & 0.14 ± { 0.01} & 0.08 ± { 0.04} \\
+ &  & \textsc{cvae-unet (r=1) (z=4)} & 0.14 ± { 0.01} & 0.09 ± { 0.03} \\
+ &  & \textsc{cvae-unet (r=1) (z=8)} & 0.15 ± { 0.01} & 0.11 ± { 0.03} \\
+ &  & \textsc{cvae-unet (r=1) (z=16)} & 0.14 ± { 0.01} & 0.10 ± { 0.02} \\
+ &  & \textsc{cvae-unet (r=1) (z=32)} & 0.15 ± { 0.01} & 0.12 ± { 0.04} \\
+ &  & \textsc{cvae-unet (r=2) (z=1)} & 0.15 ± { 0.00} & 0.10 ± { 0.03} \\
+ &  & \textsc{cvae-unet (r=2) (z=2)} & 0.15 ± { 0.00} & 0.07 ± { 0.02} \\
+ &  & \textsc{cvae-unet (r=2) (z=4)} & 0.15 ± { 0.00} & 0.08 ± { 0.03} \\
+ &  & \textsc{cvae-unet (r=2) (z=8)} & 0.15 ± { 0.01} & 0.05 ± { 0.03} \\
+ &  & \textsc{cvae-unet (r=2) (z=16)} & 0.15 ± { 0.00} & \bf 0.05 ± { 0.02} \\
+ &  & \textsc{cvae-unet (r=2) (z=32)} & 0.15 ± { 0.01} & \bf 0.05 ± { 0.02} \\
+ &  & \textsc{dapsm} & 1.49 ± { 0.01} & n/a \\
+ &  & \textsc{gcnn} & 0.67 ± { 0.12} & n/a \\
+ &  & \textsc{s2sls-lag1} & 0.09 ± { 0.00} & n/a \\
+ &  & \textsc{spatial+} & 0.05 ± { 0.02} & n/a \\
+ &  & \textsc{spatial} & 0.06 ± { 0.05} & n/a \\
+ &  & \textsc{unet} & 0.15 ± { 0.01} & 0.08 ± { 0.04} \\
 \cline{1-5} \cline{2-5}
 \bottomrule
 \end{tabular}

@@ -3,7 +3,7 @@ logdir: benchmarks/results
 # make sure it is also compatible with the cluster.yaml
 # and the config file at benchmarks/run/config.yaml
 concurrency: 64
-mem_mb: 40000
+mem_mb: 400000
 cpus_per_task: 4
 overwrite: false
 
@@ -11,17 +11,17 @@ spaceenvs:
   cont:
     - 
   disc:    
-    # - nonlocal_small_healthdgrid_rad1_pollutn_mortality_disc
-    # - nonlocal_small_healthdgrid_rad2_pollutn_mortality_disc
+    - nonlocal_small_healthdgrid_rad1_pollutn_mortality_disc
+    - nonlocal_small_healthdgrid_rad2_pollutn_mortality_disc
         
-      - small_healthdgrid_rad1_pollutn_mortality_disc
-      - small_healthdgrid_rad2_pollutn_mortality_disc
+      #- small_healthdgrid_rad1_pollutn_mortality_disc
+      #- small_healthdgrid_rad2_pollutn_mortality_disc
     
-    # - nonlocal_pm25grid_rad1_so4_pm_disc
-    # - nonlocal_pm25grid_rad2_so4_pm_disc
+    - nonlocal_pm25grid_rad1_so4_pm_disc
+    - nonlocal_pm25grid_rad2_so4_pm_disc
     
-      - pm25grid_rad1_so4_pm_disc
-      - pm25grid_rad2_so4_pm_disc
+      #- pm25grid_rad1_so4_pm_disc
+      #- pm25grid_rad2_so4_pm_disc
 
 
 algorithms:
@@ -41,7 +41,6 @@ algorithms:
     # - spatialplus
     # - gcn
     # - s2sls-lag1
-    # - deconfounder_r0_spatialplus
     
     # - deconfounder_r1_spatialplus_64
     # - deconfounder_r1_spatialplus_8
@@ -49,12 +48,28 @@ algorithms:
     # - deconfounder_r2_spatialplus_32
     #- deconfounder_r0_spatialplus_2
     #- deconfounder_r0_spatialplus_64
-    - deconfounder_r2_spatialplus_32
+    # - deconfounder_r1_spatialplus_32
     # - deconfounder_r2_spatialplus_2
+    # - deconfounder_r0_spatialplus_8
+    # - deconfounder_r0_spatialplus_16
     
     # - deconfounder_r2_spatialplus_32
     # - deconfounder_r1_spatialplus_32
-    # - deconfounder_r1_unet_16
+    # - unet
+    #- deconfounder_r0_unet_2
+    #- deconfounder_r0_unet_4
+    - deconfounder_r0_unet_8
+      #- deconfounder_r0_unet_16
+      #- deconfounder_r0_unet_32
+      #- deconfounder_r0_unet_64
+      #- deconfounder_r0_unet_8
+      
+    #- deconfounder_r2_spatialplus_2
+    #- deconfounder_r2_spatialplus_4
+    #- deconfounder_r2_spatialplus_8
+    #- deconfounder_r2_spatialplus_16
+    #- deconfounder_r2_spatialplus_32
+    #- deconfounder_r2_spatialplus_64
     
     
     # - deconfounder_r2_spatialplus_64

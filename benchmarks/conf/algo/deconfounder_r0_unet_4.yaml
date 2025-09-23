@@ -4,7 +4,7 @@ use_interference: true
 method:
   _target_: sci.algorithms.Deconfounder
   kernel_size: 3
-  radius: 2
+  radius: 0
   connectivity: 8
   encoder_pool: max
   lr_cvae: 1e-3
