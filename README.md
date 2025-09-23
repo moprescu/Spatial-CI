@@ -1,40 +1,30 @@
-# Spatial-CI
-GitHub repository for spatial causal inference research. 
+# Spatial Deconfounder: Interference-Aware Deconfounding for Spatial Causal Inference 
 
+The Spatial Deconfounder uses a conditional variational autoencoder (CVAE) with a spatial Laplacian prior to recover a smooth substitute confounder from local treatment patterns, addressing both interference and unobserved confounding.
 
-## Space repo
-(without space repo and no editing spacebench package)
+## Requirements
+
+To download the necessary requirements:
 ```
-conda env create -f conda.yaml
-conda activate benchmarks
-pip install "spacebench[all]" --no-deps
-
-```
-
-
-## Space-data repo
-space-data repo (creating data)
-```
-conda env create -f space-data/requirements.yaml
+conda env create -f environment.yml
 conda activate spacedata
 \
 ```
 
-## Run code
+## Synthetic Data Generation wth Interference
 
-Look at benchmarks/conf/config.yaml for changing resources (cpu/gpu) and num_samples
-Look at benchmarks/conf/pipeline.yaml to change which algos/datasets
-Look at benchmarks/conf/algo/yaml files because you may want to change range of values considered for hyperparams
-Outputs are .jsonl files
+It only supports one GPU for training right now. To generate the data:
 ```
-PYTHONPATH=. snakemake --configfile benchmarks/conf/pipeline.yaml -C concurrency=1 cpus_per_task=1 --use-conda -j=10
+cd space-data
+snakemake -j --configfile conf/pipeline.yaml
+\
 ```
 
-## Debugging
+## Run Benchmarks
 
-To conda environment add to jupyter kernel:
+Change files in `benchmarks/conf/` to change resources, algorithms, datasets, hyperparams, etc.. The outputs are `jsonl` fles. To run the `pipeline.yaml` file, run:
+
 ```
-conda activate benchmarks
-python -m ipykernel install --user --name benchmarks --display-name "Python (benchmarks)"
+PYTHONPATH=. snakemake --configfile benchmarks/conf/pipeline.yaml --use-conda --cores all
 ```
 
