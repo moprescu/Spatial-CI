@@ -20,7 +20,7 @@ for t_type in ("disc", "cont"):
     algos = config["algorithms"].get(t_type) or []
     for env in envs:
         for algo in algos:
-            logfile = f"{config['logdir']}/{env}_{algo}_tune.parquet"
+            logfile = f"{config['logdir']}/{env}/{algo}_tune.parquet"
             targets.append(logfile)
 
 
@@ -32,7 +32,7 @@ rule all:
 
 rule train_spaceenv:
     output:
-        config["logdir"] + "/{spaceenv}_{algo}_tune.parquet",
+        config["logdir"] + "/{spaceenv}/{algo}_tune.parquet",
     threads: config["concurrency"] * config["cpus_per_task"]
     resources:
         mem_mb=config["mem_mb"],

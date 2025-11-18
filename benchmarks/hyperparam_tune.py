@@ -145,6 +145,8 @@ def main(cfg: DictConfig) -> None:
             df = results.get_dataframe()
             print(df.columns)
             df['dataset_index'] = i
+            df['algo'] = cfg.algo.name
+            df['env'] = env_name
             
             if os.path.exists(logfile):
                 existing_df = pd.read_parquet(logfile)
