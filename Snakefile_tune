@@ -32,7 +32,7 @@ rule all:
 
 rule train_spaceenv:
     output:
-        config["logdir"] + "/{spaceenv}/{algo}_tune.parquet",
+        config["logdir"] + "/{spaceenv}_{algo}_tune.parquet",
     threads: config["concurrency"] * config["cpus_per_task"]
     resources:
         mem_mb=config["mem_mb"],
