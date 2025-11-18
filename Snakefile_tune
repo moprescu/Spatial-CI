@@ -20,7 +20,7 @@ for t_type in ("disc", "cont"):
     algos = config["algorithms"].get(t_type) or []
     for env in envs:
         for algo in algos:
-            logfile = f"{config['logdir']}/{env}/{algo}_tune.parquet"
+            logfile = f"{config['logdir']}/{env}_{algo}_tune.parquet"
             targets.append(logfile)
 
 
