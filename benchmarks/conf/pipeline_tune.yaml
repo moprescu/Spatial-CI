@@ -36,25 +36,13 @@ algorithms:
     # - gmerror
     # - deconfounder
   disc:
-    # - dapsm
-    # - spatialplus
-    # - spatialplus
-    # - gcn
-    # - s2sls-lag1
-    # - unet
-    
-    # - deconfounder_r1_spatialplus_2
-    # - deconfounder_r1_spatialplus_4
-    # - deconfounder_r1_spatialplus_8
-    # - deconfounder_r1_spatialplus_16
-    # - deconfounder_r1_spatialplus_32
-    # - deconfounder_r1_spatialplus_64
-
-    
-    # - deconfounder_r0_unet_64
-    # - deconfounder_r0_unet_32
-    # - deconfounder_r0_unet_16
-    # - deconfounder_r0_unet_8
-    # - deconfounder_r0_unet_4
-    # - deconfounder_r0_unet_2
-
+    # spatialplus hyperparam tune
+    - deconfounder_r0_spatialplus_tune
+    - deconfounder_r1_spatialplus_tune
+    - deconfounder_r2_spatialplus_tune
+    - deconfounder_r3_spatialplus_tune
+    # unet hyperparam tune
+    - deconfounder_r0_unet_tune
+    - deconfounder_r1_unet_tune
+    - deconfounder_r2_unet_tune
+    - deconfounder_r3_unet_tune

@@ -16,7 +16,7 @@ from sci import SpaceEnv
 from sci.algorithms.datautils import spatial_train_test_split
 
 LOGGER = logging.getLogger(__name__)
-
+MAX_TRIALS = 3
 
 @hydra.main(config_path="conf", config_name="config", version_base=None)
 def main(cfg: DictConfig) -> None:
@@ -75,14 +75,14 @@ def main(cfg: DictConfig) -> None:
             param_space = dict(hydra.utils.instantiate(cfg.algo.tune.param_space))
             if len(param_space) > 0:
 
-                def objective(config):
+                def objective(config):                    
                     seed_everything(gseed)
                     method = hydra.utils.instantiate(cfg.algo.method, **config)
                     method.fit(train_dataset)
                     tune_metric = method.tune_metric(test_dataset)
                     num_trials = 0
                     
-                    while right_method and tune_metric > 100 and num_trials < 3:
+                    while right_method and tune_metric > 100 and num_trials < MAX_TRIALS:
                         if cfg.algo.needs_train_test_split:
                             tmp_train_ix, tmp_test_ix, _ = spatial_train_test_split(
                                 env.graph, **{**cfg.spatial_train_test_split, "buffer": cfg.spatial_train_test_split["buffer"] + env.radius}
@@ -102,6 +102,7 @@ def main(cfg: DictConfig) -> None:
                         torch.cuda.empty_cache()
                         torch.cuda.reset_peak_memory_stats()
                         torch.cuda.ipc_collect()
+
                     return tune_metric
 
                 objective = tune.with_resources(objective, dict(cfg.algo.tune.resources))
@@ -128,7 +129,7 @@ def main(cfg: DictConfig) -> None:
                 # run hyperparameter tuning
                 LOGGER.info("...running hyperparameter tuning")
                 results = tuner.fit()
-
+                
                 # save all grid results in all_results
                 best_params = results.get_best_result().config
                 LOGGER.info(f"Best params: {best_params}")
@@ -148,12 +149,13 @@ def main(cfg: DictConfig) -> None:
             if len(param_space) > 0:
                 tune_metric = method.tune_metric(test_dataset)
                 num_trials = 0
-                while right_method and tune_metric > 100 and num_trials < 3:
+                while right_method and tune_metric > 100 and num_trials < MAX_TRIALS:
                     method = hydra.utils.instantiate(cfg.algo.method, **best_params)
                     method.fit(full_dataset)
                     tune_metric = method.tune_metric(test_dataset)
                     num_trials = num_trials + 1
             effects = method.eval(full_dataset)
+            # method.plot_latent(full_dataset, logfile.replace(".jsonl", f"_i{i}_seed{gseed}.pdf"))
             # LOGGER.info(f"actual effects: {effects}")
             
             # del method
@@ -177,6 +179,8 @@ def main(cfg: DictConfig) -> None:
             eval_results["radius"] = full_dataset.radius
             eval_results["seed"] = gseed
             eval_results["miss"] = full_dataset.topfeat[i]
+            if hasattr(method, "cur_val_p_value"):
+                eval_results["p_value"] = method.cur_val_p_value
 
             LOGGER.info(f"eval results: {eval_results}")
 

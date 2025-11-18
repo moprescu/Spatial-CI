@@ -25,7 +25,13 @@ from .spatialplus import SpatialPlus
 # from .pysal_spreg import GMLag
 from copy import deepcopy
 
+from sklearn.decomposition import PCA
+from matplotlib.colors import Normalize
+from matplotlib.cm import ScalarMappable
+import matplotlib.pyplot as plt
+
 total_batch_size = 64
+latent_idx = "mu" # "z_s" for sample and "mu" for expected value for latents
 
 class CVAE_Grid(nn.Module):
     def __init__(
@@ -69,9 +75,9 @@ class CVAE_Grid(nn.Module):
         # Encoder: Two 3x3 convolutions over radius-r patch
         self.enc_mid_chan = encoder_conv1
         self.enc_out_chan = encoder_conv2
-        self.encoder_conv = DoubleConvMultiChannel(self.encoder_input_dim, self.enc_mid_chan, self.enc_out_chan, radius=self.radius)
+        self.encoder_conv = DoubleConvMultiChannel(self.encoder_input_dim, self.enc_mid_chan, self.enc_out_chan, radius=self.radius, k_size=self.kernel_size)
         self.encoder_pool = encoder_pool
-        
+                
         # Encoder output processing including covariates
         self.encoder_flatten_dim = self.enc_out_chan
         # self.fc_mu = nn.Linear(self.encoder_flatten_dim, self.latent_dim)
@@ -82,6 +88,9 @@ class CVAE_Grid(nn.Module):
         
         # Precompute grid Laplacian matrix L for GMRF prior
         self.register_buffer('laplacian', self._build_patch_laplacian())
+        
+        # init_temperature = 1.0
+        # self.log_temperature = nn.Parameter(torch.tensor(init_temperature).log())
     
     
     def _build_patch_laplacian(self):
@@ -153,6 +162,7 @@ class CVAE_Grid(nn.Module):
         """
         std = torch.exp(0.5 * logvar)
         eps = torch.randn_like(std)
+        # temperature = torch.exp(self.log_temperature)
         return mu + eps * std
     
     def decode(self, x_s, z_s):
@@ -218,9 +228,10 @@ class CVAE_Grid(nn.Module):
         
         # Reparameterize
         z_s = self.reparameterize(mu, logvar)
+        # print(str(mu))
         
-        return z_s.view(-1, self.patch_size, self.patch_size, self.per_location_latent_dim)
-
+        return mu.view(-1, self.patch_size, self.patch_size, self.per_location_latent_dim), logvar.view(-1, self.patch_size, self.patch_size, self.per_location_latent_dim), z_s.view(-1, self.patch_size, self.patch_size, self.per_location_latent_dim)
+    
 
 class CVAE(pl.LightningModule):
     def __init__(
@@ -281,8 +292,8 @@ class CVAE(pl.LightningModule):
         
     def predict_step(self, batch, batch_idx):
         treatments, covariates, true_treatments = batch
-        z_s = self.model.get_latent(treatments, covariates)
-        return z_s
+        mu, logvar, z_s = self.model.get_latent(treatments, covariates)
+        return {"mu": mu, "logvar": logvar, "z_s": z_s}
         
     def training_step(self, batch, batch_idx):
         treatments, covariates, true_treatments = batch
@@ -400,6 +411,10 @@ class CVAE(pl.LightningModule):
         self.current_val_p_value = p_values.mean()
         self.current_val_treatment_loss = treatment_loss.detach().cpu().item()
         self.current_val_loss = loss.detach().cpu().item()
+        
+        del z_s, z_s_mc, z_s_inner, a_logits, a_logits_mc, a_logits_inner
+        del mc_test_stats, test_stat_true, log_probs, mc_log_probs
+        torch.cuda.empty_cache()
         
         return loss
     
@@ -615,6 +630,10 @@ class CVAEDataset(Dataset):
         ids = nodes
         id2coords = {v: k for k, v in coords2id.items()}
         
+        self.treatment_vector = true_treatment[ids]
+        self.covariate_vector = covariates[ids]
+        self.outcome_vector = outcomes
+        
         self.treatments = torch.zeros(len(ids), 2*radius+1, 2*radius+1, 1)
         
         for ii, n in enumerate(nodes):
@@ -798,7 +817,6 @@ class Deconfounder(SpaceAlgo):
         Args:
             device: Device to use ('cuda', 'cpu', or None for auto-detection)
         """
-        
         self.cvae_kwargs = {
             "radius": radius,
             "encoder_conv1": encoder_conv1,
@@ -907,6 +925,7 @@ class Deconfounder(SpaceAlgo):
         
         loader = DataLoader(self.cvae_traindata, batch_size=total_batch_size, shuffle=True, num_workers=4, pin_memory=True)
         val_loader = DataLoader(self.cvae_valdata, batch_size=total_batch_size, shuffle=False, num_workers=4, pin_memory=True)
+        self.cvae_model.steps_per_epoch = len(loader)
         
         
         LOGGER.debug("Preparing trainer...")
@@ -961,8 +980,12 @@ class Deconfounder(SpaceAlgo):
             self.cur_val_p_value = checkpoint["val_p_value"]
             self.val_treatment_loss = checkpoint["val_treatment_loss"]
             
-            # if val_p_value < 0.3:
-            #     raise ValueError(f"Validation p_value too low: {val_p_value:.3f}")
+            del checkpoint
+            torch.cuda.empty_cache()
+            
+            if self.cur_val_p_value < 0.25 or self.cur_val_p_value > 0.75:
+                LOGGER.debug(f"Validation p_value too low: {self.cur_val_p_value:.3f}")
+                return
         else:
             LOGGER.warning("No best checkpoint found, using final epoch model")
 
@@ -974,11 +997,15 @@ class Deconfounder(SpaceAlgo):
         latent_loader = DataLoader(self.cvae_traindata, batch_size=total_batch_size, shuffle=False, num_workers=4, pin_memory=True)
         latent_val_loader = DataLoader(self.cvae_valdata, batch_size=total_batch_size, shuffle=False, num_workers=4, pin_memory=True)
         
-        train_latents = torch.cat(self.cvae_trainer.predict(self.cvae_model, latent_loader))
-        train_latents = train_latents.cpu().numpy()
+        train_latents = self.cvae_trainer.predict(self.cvae_model, latent_loader)
+        train_latents = torch.cat([o[latent_idx] for o in train_latents]).cpu().numpy()
         
-        val_latents = torch.cat(self.cvae_trainer.predict(self.cvae_model, latent_val_loader))
-        val_latents = val_latents.cpu().numpy()        
+        val_latents = self.cvae_trainer.predict(self.cvae_model, latent_val_loader)
+        val_latents = torch.cat([o[latent_idx] for o in val_latents]).cpu().numpy()
+        
+        del latent_loader, latent_val_loader
+        torch.cuda.empty_cache()
+        
         
         LOGGER.debug(f"Building outcome head {self.head}...")
         
@@ -998,8 +1025,8 @@ class Deconfounder(SpaceAlgo):
 
                 flat_wo_center = flat_wo_center.squeeze(-1).cpu().numpy()
             
-            val_latents = torch.cat(self.cvae_trainer.predict(self.cvae_model, latent_loader))
-            val_latents = val_latents.view(B, -1).cpu().numpy() 
+            val_latents = self.cvae_trainer.predict(self.cvae_model, latent_loader)
+            val_latents = torch.cat([o[latent_idx] for o in val_latents]).view(B, -1).cpu().numpy()
             
             
             new_dataset = deepcopy(dataset)
@@ -1081,6 +1108,9 @@ class Deconfounder(SpaceAlgo):
                 LOGGER.debug(f"Loading best model from: {best_checkpoint_path}")
                 checkpoint = torch.load(best_checkpoint_path, map_location=self.head_model.device)
                 self.head_model.load_state_dict(checkpoint['state_dict'])
+                
+                del checkpoint
+                torch.cuda.empty_cache()
             else:
                 LOGGER.warning("No best checkpoint found, using final epoch model")
 
@@ -1093,6 +1123,8 @@ class Deconfounder(SpaceAlgo):
         """
         Evaluate the model with GPU acceleration for large datasets.
         """
+        if self.cur_val_p_value < 0.25 or self.cur_val_p_value > 0.75:
+            return {"ate": 100, "erf": 100, "ite": 100}
         
         LOGGER.debug("Computing counterfactuals...")
         ite = []
@@ -1119,7 +1151,9 @@ class Deconfounder(SpaceAlgo):
         return effects
     
     def tune_metric(self, dataset: SpaceDataset) -> float:
-    
+        if self.cur_val_p_value < 0.25 or self.cur_val_p_value > 0.75:
+            return 10000
+        
         if self.head == "unet":
             preds = self.predict(dataset, self.max_nodes, a=None, change=None)[:, 0]
             return np.mean((dataset.full_outcome[self.max_nodes] - preds) ** 2)
@@ -1127,8 +1161,11 @@ class Deconfounder(SpaceAlgo):
             predict_data = CVAEDataset(dataset, self.max_nodes, self.max_coords2id, self.cvae_radius, self.cvae_traindata.treat_scaler, self.cvae_traindata.feat_scaler, self.cvae_traindata.output_scaler, datatype=dataset.datatype, dataset_radius=dataset.conf_radius)
         
             loader = DataLoader(predict_data, batch_size=total_batch_size, shuffle=False, num_workers=4, pin_memory=True)
-            latents = torch.cat(self.cvae_trainer.predict(self.cvae_model, loader))
-            latents = latents.view(predict_data.treatments.shape[0], -1).cpu().numpy()
+            latents = self.cvae_trainer.predict(self.cvae_model, loader)
+            latents = torch.cat([o[latent_idx] for o in latents]).view(predict_data.treatments.shape[0], -1).cpu().numpy()
+            
+            if np.isnan(latents).any():
+                return 10000
         
             new_dataset = deepcopy(dataset)
             B = predict_data.treatments.shape[0]
@@ -1146,7 +1183,11 @@ class Deconfounder(SpaceAlgo):
             else:
                 new_dataset.covariates = np.concatenate([new_dataset.covariates, latents], axis=1)
             if self.head == "spatialplus":
-                return self.head_model.tune_metric(new_dataset)
+                m = self.head_model.tune_metric(new_dataset)
+                if np.isnan(m):
+                    return 10000
+                else:
+                    return m
             if self.head == "s2sls-lag1":
                 return self.val_treatment_loss
                 # preds = self.head_model.predict(new_dataset).flatten()
@@ -1167,9 +1208,12 @@ class Deconfounder(SpaceAlgo):
         predict_data = CVAEDataset(dataset, nodes, self.max_coords2id, self.cvae_radius, self.cvae_traindata.treat_scaler, self.cvae_traindata.feat_scaler, self.cvae_traindata.output_scaler, datatype=dataset.datatype, a=a, change=change, dataset_radius=dataset.conf_radius)
         
         loader = DataLoader(predict_data, batch_size=total_batch_size, shuffle=False, num_workers=4, pin_memory=True)
-        latents = torch.cat(self.cvae_trainer.predict(self.cvae_model, loader))
+        latents = self.cvae_trainer.predict(self.cvae_model, loader)
+        latents = torch.cat([o[latent_idx] for o in latents])
+        
         if self.head == "unet":
             latents = latents.cpu().numpy()
+            torch.cuda.empty_cache()
         elif self.head == "spatialplus" or self.head == "s2sls-lag1":
             latents = latents.view(predict_data.treatments.shape[0], -1).cpu().numpy()
         
@@ -1207,8 +1251,321 @@ class Deconfounder(SpaceAlgo):
         
         return preds
     
+    def plot_latent(self, dataset: SpaceDataset, filename):
+        """
+        Plot PCA of latent values with GPU acceleration for large datasets.
+        """
+        nodes = self.max_nodes
+        a = None
+        change = None
+        
+        
+        predict_data = CVAEDataset(dataset, nodes, self.max_coords2id, self.cvae_radius, self.cvae_traindata.treat_scaler, self.cvae_traindata.feat_scaler, self.cvae_traindata.output_scaler, datatype=dataset.datatype, a=a, change=change, dataset_radius=dataset.conf_radius)
+        
+        loader = DataLoader(predict_data, batch_size=total_batch_size, shuffle=False, num_workers=4, pin_memory=True)
+        outs = self.cvae_trainer.predict(self.cvae_model, loader)
+        mu = torch.cat([o["mu"] for o in outs]).cpu().numpy()
+        logvar = torch.cat([o["logvar"] for o in outs]).cpu().numpy()
+                
+        new_ids = {old_id: new_id for new_id, old_id in enumerate(nodes)}
+        small_coords2id = {coord: new_ids[id_] for coord, id_ in self.max_coords2id.items() if id_ in new_ids}
+        
+        torch.save({
+            'mu': mu, 
+            'logvar': logvar,
+            'coords2id': small_coords2id, 
+            'missing_covariates': dataset.missing_covariates[nodes],  
+            'treatment': predict_data.treatment_vector,
+            'covariates': predict_data.covariate_vector
+        }, 'saved_data.pt')
+        
+        # save_maps_grid(self.max_coords2id, latents, use_center_only=False, filename=filename, standardize=True, use_pca=True)
+        save_maps_grid(small_coords2id, mu, use_center_only=True, filename=filename.replace('.pdf', '_mucenter.pdf'), standardize=True, use_pca=False, fit_on_all_pixels=False)
+        save_maps_grid(small_coords2id, logvar, use_center_only=True, filename=filename.replace('.pdf', '_varcenter.pdf'), standardize=True, use_pca=False, fit_on_all_pixels=False)
+        # save_maps_grid(small_coords2id, dataset.missing_covariates[nodes], filename=filename, standardize=True, use_pca=False)
+            
     
+
+def save_maps_grid(max_coords2id, latents, n_pca_components=10, 
+                   use_center_only=True, filename=None, standardize=True,
+                   use_pca=True, feature_column=None, fit_on_all_pixels=False):
+    """
+    Display latent maps in a grid, with optional PCA reduction.
     
+    Parameters:
+    -----------
+    max_coords2id : dict
+        Dictionary mapping 2D coordinates (row, col) to indices
+    latents : np.ndarray
+        Array of shape (N, patch_size, patch_size, C) containing latent features
+    n_pca_components : int, default 3
+        Number of PCA components to compute and visualize (only used if use_pca=True)
+    use_center_only : bool, default True
+        If True, use only center pixel of each patch
+        If False, use all pixels in the patch (flattened)
+    filename : str, optional
+        Base path to save figures. If None, figures are not saved.
+        For each component, appends _component_{i}.png to the filename
+    standardize : bool, default True
+        If True, standardize components to z-scores and clip to ±3 std
+        If False, use original component range for color mapping
+    use_pca : bool, default True
+        If True, apply PCA to features and plot components
+        If False, plot a single feature column directly
+    feature_column : int, optional
+        Column index to plot when use_pca=False
+        If None when use_pca=False, defaults to 0
+    fit_on_all_pixels : bool, default False
+        Only used when use_pca=True. If True, fit PCA on all pixels (flattened),
+        then transform and plot only the center pixel. If False, fit and plot
+        on the same features (controlled by use_center_only).
+    """
+    
+    # Extract features from latents for PCA fitting
+    if use_pca:
+        if fit_on_all_pixels:
+            # Fit PCA on all pixels (flattened)
+            N, patch_size, _, C = latents.shape
+            fit_features = latents.reshape(N*patch_size*patch_size, C)
+            
+            # Extract center pixel only for plotting
+            center_idx = latents.shape[1] // 2
+            plot_features_data = latents[:, center_idx, center_idx, :]  # Shape: (N, C)
+        else:
+            if use_center_only:
+                # Use center pixel only for both fitting and plotting
+                center_idx = latents.shape[1] // 2
+                features = latents[:, center_idx, center_idx, :]  # Shape: (N, C)
+            else:
+                # Use all pixels, flattened for both fitting and plotting
+                N, patch_size, _, C = latents.shape
+                features = latents.reshape(N, -1)  # Shape: (N, patch_size*patch_size*C)
+            fit_features = features
+            plot_features_data = features
+    else:
+        plot_features_data = latents
+    
+    # Infer grid shape from max_coords2id
+    coords = list(max_coords2id.keys())
+    max_row = max(c[0] for c in coords)
+    max_col = max(c[1] for c in coords)
+    grid_shape = (max_row + 1, max_col + 1)
+    
+    if use_pca:
+        # Apply PCA
+        # pca = PCA(n_components=min(n_pca_components, fit_features.shape[1]))
+        # pca.fit(fit_features)
+        # plot_features = pca.transform(plot_features_data)  # Shape: (N, n_pca_components)
+        
+        # from sklearn.decomposition import FastICA
+        # ica = FastICA(n_components=min(n_pca_components, fit_features.shape[1]), random_state=0)
+        # ica.fit(fit_features)
+        # plot_features = ica.transform(plot_features_data)
+        
+        from sklearn.decomposition import KernelPCA
+
+        kpca = KernelPCA(
+            n_components=min(n_pca_components, fit_features.shape[1]),
+            kernel='rbf',
+            gamma=None,
+            fit_inverse_transform=False,
+            random_state=0
+        )
+        kpca.fit(fit_features)
+        plot_features = kpca.transform(plot_features_data)
+
+
+
+
+
+
+
+
+        component_names = [f"PCA component {i}" for i in range(plot_features.shape[1])]
+    else:
+        # Use single feature column
+        if feature_column is None:
+            feature_column = 0
+        plot_features = plot_features_data[:, feature_column:feature_column+1]  # Shape: (N, 1)
+        component_names = [f"Feature column {feature_column}"]
+    
+    # Plot each component in a separate figure
+    n_components = plot_features.shape[1]
+    
+    for comp_idx in range(n_components):
+        values = plot_features[:, comp_idx]
+        
+        if standardize:
+            # Standardize and clip to ±3 std
+            mean = values.mean()
+            std = values.std()
+            plot_values = ((values - mean) / std).clip(min=-3, max=3)
+            vmin, vmax = -3, 3
+        else:
+            # Use original component range
+            plot_values = values
+            vmin = values.min()
+            vmax = values.max()
+        
+        # Create empty grid filled with NaN
+        grid = np.full(grid_shape, np.nan)
+        
+        # Place each value at its specified (row, col) position
+        for (row, col), idx in max_coords2id.items():
+            if 0 <= idx < len(plot_values):
+                grid[row, col] = plot_values[idx]
+        
+        # Normalize for color mapping
+        norm = Normalize(vmin=vmin, vmax=vmax)
+        cmap = plt.get_cmap('RdBu_r')
+        
+        width = 10
+        aspect_correction = 1.2938694780251683
+        height = width * aspect_correction
+        fig, ax = plt.subplots(figsize=(width, height))
+        im = ax.imshow(grid, cmap=cmap, norm=norm, origin='upper', aspect=aspect_correction)
+        
+        # Add colorbar
+        sm = ScalarMappable(cmap=cmap, norm=norm)
+        sm._A = []
+        cbar = fig.colorbar(sm, ax=ax, shrink=0.35)
+        cbar.ax.tick_params(labelsize=14)
+        
+        ax.axis('off')
+        plt.tight_layout()
+        
+        # Save if filename provided
+        if filename is not None:
+            base, ext = os.path.splitext(filename)
+            if use_pca:
+                component_filename = f"{base}_latent_component_{comp_idx}{ext}"
+            else:
+                component_filename = f"{base}_miss_feature_column_{feature_column}{ext}"
+            plt.savefig(component_filename, dpi=150, bbox_inches='tight')
+            print(f"Figure saved to {component_filename}")
+        
+        plt.show()
+
+# def save_maps_grid(max_coords2id, latents, n_pca_components=3, 
+#                    use_center_only=True, filename=None, standardize=True,
+#                    use_pca=True, feature_column=None):
+#     """
+#     Display latent maps in a grid, with optional PCA reduction.
+    
+#     Parameters:
+#     -----------
+#     max_coords2id : dict
+#         Dictionary mapping 2D coordinates (row, col) to indices
+#     latents : np.ndarray
+#         Array of shape (N, patch_size, patch_size, C) containing latent features
+#     n_pca_components : int, default 3
+#         Number of PCA components to compute and visualize (only used if use_pca=True)
+#     use_center_only : bool, default True
+#         If True, use only center pixel of each patch
+#         If False, use all pixels in the patch (flattened)
+#     filename : str, optional
+#         Base path to save figures. If None, figures are not saved.
+#         For each component, appends _component_{i}.png to the filename
+#     standardize : bool, default True
+#         If True, standardize components to z-scores and clip to ±3 std
+#         If False, use original component range for color mapping
+#     use_pca : bool, default True
+#         If True, apply PCA to features and plot components
+#         If False, plot a single feature column directly
+#     feature_column : int, optional
+#         Column index to plot when use_pca=False
+#         If None when use_pca=False, defaults to 0
+#     """
+    
+#     # Extract features from latents
+#     if use_pca:
+#         if use_center_only:
+#             # Use center pixel only
+#             center_idx = latents.shape[1] // 2
+#             features = latents[:, center_idx, center_idx, :]  # Shape: (N, C)
+#         else:
+#             # Use all pixels, flattened
+#             N, patch_size, _, C = latents.shape
+#             features = latents.reshape(N, -1)  # Shape: (N, patch_size*patch_size*C)
+#     else:
+#         features = latents
+    
+#     # Infer grid shape from max_coords2id
+#     coords = list(max_coords2id.keys())
+#     max_row = max(c[0] for c in coords)
+#     max_col = max(c[1] for c in coords)
+#     grid_shape = (max_row + 1, max_col + 1)
+    
+#     if use_pca:
+#         # Apply PCA
+#         pca = PCA(n_components=min(n_pca_components, features.shape[1]))
+#         plot_features = pca.fit_transform(features)  # Shape: (N, n_pca_components)
+#         component_names = [f"PCA component {i}" for i in range(plot_features.shape[1])]
+#     else:
+#         # Use single feature column
+#         if feature_column is None:
+#             feature_column = 0
+#         plot_features = features[:, feature_column:feature_column+1]  # Shape: (N, 1)
+#         component_names = [f"Feature column {feature_column}"]
+    
+#     # Plot each component in a separate figure
+#     n_components = plot_features.shape[1]
+    
+#     for comp_idx in range(n_components):
+#         values = plot_features[:, comp_idx]
+        
+#         if standardize:
+#             # Standardize and clip to ±3 std
+#             mean = values.mean()
+#             std = values.std()
+#             plot_values = ((values - mean) / std).clip(min=-3, max=3)
+#             vmin, vmax = -3, 3
+#         else:
+#             # Use original component range
+#             plot_values = values
+#             vmin = values.min()
+#             vmax = values.max()
+        
+#         # Create empty grid filled with NaN
+#         grid = np.full(grid_shape, np.nan)
+        
+#         # Place each value at its specified (row, col) position
+#         for (row, col), idx in max_coords2id.items():
+#             if 0 <= idx < len(plot_values):
+#                 grid[row, col] = plot_values[idx]
+        
+#         # Normalize for color mapping
+#         norm = Normalize(vmin=vmin, vmax=vmax)
+#         cmap = plt.get_cmap('RdBu_r')
+        
+#         width = 10
+#         aspect_correction = 1.2938694780251683
+#         height = width * aspect_correction
+#         fig, ax = plt.subplots(figsize=(width, height))
+#         im = ax.imshow(grid, cmap=cmap, norm=norm, origin='upper', aspect=aspect_correction)
+        
+#         # Add colorbar
+#         sm = ScalarMappable(cmap=cmap, norm=norm)
+#         sm._A = []
+#         cbar = fig.colorbar(sm, ax=ax, shrink=0.35)
+#         cbar.ax.tick_params(labelsize=14)
+        
+#         ax.axis('off')
+#         plt.tight_layout()
+        
+#         # Save if filename provided
+#         if filename is not None:
+#             base, ext = os.path.splitext(filename)
+#             if use_pca:
+#                 component_filename = f"{base}_latent_component_{comp_idx}{ext}"
+#             else:
+#                 component_filename = f"{base}_miss_feature_column_{feature_column}{ext}"
+#             plt.savefig(component_filename, dpi=150, bbox_inches='tight')
+#             print(f"Figure saved to {component_filename}")
+        
+#         plt.show()      
+        
+
 def spatial_train_test_split_radius(
     graph: nx.Graph,
     init_frac: float,

@@ -25,6 +25,13 @@ snakemake -j --configfile conf/pipeline.yaml
 Change files in `benchmarks/conf/` to change resources, algorithms, datasets, hyperparams, etc.. The outputs are `jsonl` fles. To run the `pipeline.yaml` file, run:
 
 ```
-PYTHONPATH=. snakemake --configfile benchmarks/conf/pipeline.yaml --use-conda --cores all
+PYTHONPATH=. snakemake -s Snakefile_tune --configfile benchmarks/conf/pipeline.yaml --use-conda --cores all
 ```
 
+## Run Hyperparameter Tuning
+
+These are used to create the hyperparameter visualization plots. Change files in `benchmarks/conf/` to change resources, algorithms, datasets, hyperparams, etc.. The outputs are `parquet` fles. To run the `pipeline_tune.yaml` file, run:
+
+```
+PYTHONPATH=. snakemake -s Snakefile_tune --configfile benchmarks/conf/pipeline_tune.yaml --use-conda --cores all
+```

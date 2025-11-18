@@ -178,7 +178,7 @@ class DoubleConvMultiChannel(nn.Module):
     """(convolution => [Norm] => ReLU) * 2
        Uses BatchNorm if radius != 0, otherwise InstanceNorm.
     """
-    def __init__(self, in_channels, mid_channels, out_channels, p=0.1, radius=1):
+    def __init__(self, in_channels, mid_channels, out_channels, p=0.1, radius=1, k_size=3):
         super(DoubleConvMultiChannel, self).__init__()
 
         def maybe_norm(channels):
@@ -186,17 +186,17 @@ class DoubleConvMultiChannel(nn.Module):
                 return None   # no normalization
             else:
                 return nn.BatchNorm2d(channels)
-            
+        p_size = (k_size - 1)//2
         layers = [
-            nn.Conv2d(in_channels, mid_channels, kernel_size=3, padding=1)
+            nn.Conv2d(in_channels, mid_channels, kernel_size=k_size, padding=p_size)
         ]
         norm = maybe_norm(mid_channels)
         if norm is not None:
             layers.append(norm)
         layers.append(nn.ReLU(inplace=True))
-        # layers.append(nn.Dropout(p))
+        # layers.append(nn.Dropout2d(p=p))
 
-        layers.append(nn.Conv2d(mid_channels, out_channels, kernel_size=3, padding=1))
+        layers.append(nn.Conv2d(mid_channels, out_channels, kernel_size=k_size, padding=p_size))
         norm = maybe_norm(out_channels)
         if norm is not None:
             layers.append(norm)

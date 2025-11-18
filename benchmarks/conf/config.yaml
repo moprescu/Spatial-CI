@@ -14,6 +14,7 @@ spatial_train_test_split:
 
 spaceenv: climate_wfsmoke_minrty_disc  # must be a valid spaceenv
 logfile: benchmarks/results/${spaceenv}/${hydra:runtime.choices.algo}.jsonl
+tunefile: benchmarks/results/${spaceenv}/${hydra:runtime.choices.algo}_tune.parquet
 
 algo:  # these config must be overwritten by algo/*.yaml
   needs_train_test_split: ???
@@ -26,10 +27,10 @@ algo:  # these config must be overwritten by algo/*.yaml
     param_space: {}
     resources:
       cpu: 4
-      gpu: ${oc.select:gpu_map.${algo.name},1}
+      gpu: 1
     tune_config:
       _target_: ray.tune.TuneConfig
-      num_samples: 16
+      num_samples: ${oc.select:tune_map.${algo.name},16}
       max_concurrent_trials: ${concurrency}
       scheduler:
         _target_: ray.tune.schedulers.ASHAScheduler
@@ -38,26 +39,16 @@ algo:  # these config must be overwritten by algo/*.yaml
       _target_: ray.air.RunConfig
       storage_path: benchmarks/ray_cache/${spaceenv}/${hydra:runtime.choices.algo}
 
-gpu_map:
-  deconfounder_r0_unet: 1
-  deconfounder_r1_unet: 1
-  deconfounder_r2_unet: 1
+tune_map:
+  deconfounder_r0_unet_tune: 150
+  deconfounder_r1_unet: 150
+  deconfounder_r2_unet: 150
+  deconfounder_r3_unet: 150
   
-  deconfounder_r0_spatialplus_8: 1
-  deconfounder_r1_spatialplus_8: 1
-  deconfounder_r2_spatialplus_8: 1
-  
-  deconfounder_r0_spatialplus_64: 1
-  deconfounder_r1_spatialplus_64: 1
-  deconfounder_r2_spatialplus_64: 1
-  
-  deconfounder_r0_s2sls-lag1: 1
-  deconfounder_r1_s2sls-lag1: 1
-  deconfounder_r2_s2sls-lag1: 1
-  gcn: 1
-  spatial: 1
-  spatialplus: 1
-
+  deconfounder_r0_spatialplus_tune: 150
+  deconfounder_r1_spatialplus_tune: 150
+  deconfounder_r2_spatialplus_tune: 150
+  deconfounder_r3_spatialplus_tune: 150
 
 hydra:
   run:
