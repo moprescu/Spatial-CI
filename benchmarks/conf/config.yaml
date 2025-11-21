@@ -13,8 +13,9 @@ spatial_train_test_split:
   # seed: 0
 
 spaceenv: climate_wfsmoke_minrty_disc  # must be a valid spaceenv
-logfile: benchmarks/results/${spaceenv}/${hydra:runtime.choices.algo}.jsonl
-tunefile: benchmarks/results/${spaceenv}/${hydra:runtime.choices.algo}_tune.parquet
+logfile: /global/cfs/cdirs/m4888/CI_HPO/results/${spaceenv}/${hydra:runtime.choices.algo}.jsonl
+tunefile: /global/cfs/cdirs/m4888/CI_HPO/results/${spaceenv}/${hydra:runtime.choices.algo}_tune.parquet
+
 
 algo:  # these config must be overwritten by algo/*.yaml
   needs_train_test_split: ???
@@ -25,31 +26,39 @@ algo:  # these config must be overwritten by algo/*.yaml
 
   tune:  # ray tune resources, can override  in algo/*.yaml but not needed
     param_space: {}
+    # trial_timeout_s: 60  # time limit in second for per trial
+    
     resources:
-      cpu: 4
+      cpu: 32
       gpu: 1
     tune_config:
       _target_: ray.tune.TuneConfig
       num_samples: ${oc.select:tune_map.${algo.name},16}
       max_concurrent_trials: ${concurrency}
+      time_budget_s: 3600  # time limit for the whole tuning run
       scheduler:
         _target_: ray.tune.schedulers.ASHAScheduler
       mode: min
     run_config:
       _target_: ray.air.RunConfig
-      storage_path: benchmarks/ray_cache/${spaceenv}/${hydra:runtime.choices.algo}
-
+      storage_path: /global/cfs/cdirs/m4888/CI_HPO/ray_cache/${spaceenv}/${hydra:runtime.choices.algo}
+      local_dir:    /global/cfs/cdirs/m4888/CI_HPO/ray_results
+    checkpoint_config:
+        _target_: ray.train.CheckpointConfig
+        checkpoint_frequency: 5      # checkpoint every 5 reports
+        checkpoint_at_end: false     # don't force an extra one at the end
+        num_to_keep: 1               # keep only the latest checkpoint
 tune_map:
-  deconfounder_r0_unet_tune: 150
-  deconfounder_r1_unet: 150
-  deconfounder_r2_unet: 150
-  deconfounder_r3_unet: 150
+  deconfounder_r0_unet_tune: 50
+  deconfounder_r1_unet_tune: 50
+  deconfounder_r2_unet_tune: 50
+  deconfounder_r3_unet_tune: 50
   
-  deconfounder_r0_spatialplus_tune: 150
-  deconfounder_r1_spatialplus_tune: 150
-  deconfounder_r2_spatialplus_tune: 150
-  deconfounder_r3_spatialplus_tune: 150
+  deconfounder_r0_spatialplus_tune: 50
+  deconfounder_r1_spatialplus_tune: 50
+  deconfounder_r2_spatialplus_tune: 50
+  deconfounder_r3_spatialplus_tune: 50
 
 hydra:
   run:
-    dir: logs/${spaceenv}/${hydra:runtime.choices.algo}
+    dir: /global/cfs/cdirs/m4888/CI_HPO/logs/${spaceenv}/${hydra:runtime.choices.algo}

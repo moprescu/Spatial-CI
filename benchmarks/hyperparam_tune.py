@@ -5,11 +5,14 @@ import time
 
 import hydra
 import jsonlines
-import ray
-from ray import train
+
 from omegaconf import DictConfig, OmegaConf
 from pytorch_lightning import seed_everything
+
+import ray
 from ray import tune
+from ray import train
+
 import torch, gc
 import numpy as np
 import pandas as pd
@@ -21,6 +24,22 @@ from sci.algorithms.datautils import spatial_train_test_split
 LOGGER = logging.getLogger(__name__)
 MAX_TRIALS = 3
 
+
+# class TimeLimitStopper(tune.Stopper):
+#     def __init__(self, max_seconds: float):
+#         self.max_seconds = max_seconds
+#         self.start_times = {}
+
+#     def __call__(self, trial_id, result):
+#         if trial_id not in self.start_times:
+#             self.start_times[trial_id] = time.time()
+#         elapsed = time.time() - self.start_times[trial_id]
+#         return elapsed > self.max_seconds  # True => stop this trial
+
+#     def stop_all(self):
+#         return False
+
+
 @hydra.main(config_path="conf", config_name="config", version_base=None)
 def main(cfg: DictConfig) -> None:
     cfg = OmegaConf.create(OmegaConf.to_container(cfg, resolve=True))
@@ -28,6 +47,9 @@ def main(cfg: DictConfig) -> None:
     os.makedirs(os.path.dirname(logfile), exist_ok=True)
     LOGGER.info(f"Logging to {logfile}")
     seed_everything(0)
+
+    # max_trial_sec = cfg.algo.tune.get("trial_timeout_s")
+    # time_limiter = TimeLimitStopper(max_seconds=max_trial_sec)
 
     # check if logfile exists and overwrite, delete it and continue
     # otherwise return
@@ -84,7 +106,18 @@ def main(cfg: DictConfig) -> None:
                 tune_metric = method.tune_metric(test_dataset)
                 num_trials = 0
 
+                # start_time = time.time()
+
+                # def time_exceeded():
+                #     return (time.time() - start_time) > max_trial_sec
+
                 while right_method and (tune_metric > 100 or np.isnan(tune_metric)) and num_trials < MAX_TRIALS:
+
+                    if time_exceeded():
+                        # mark as bad and stop early
+                        train.report({"_metric": float("inf")})
+                        return
+
                     if cfg.algo.needs_train_test_split:
                         tmp_train_ix, tmp_test_ix, _ = spatial_train_test_split(
                             env.graph, **{**cfg.spatial_train_test_split, "buffer": cfg.spatial_train_test_split["buffer"] + env.radius}
@@ -104,14 +137,13 @@ def main(cfg: DictConfig) -> None:
                     torch.cuda.empty_cache()
                     torch.cuda.reset_peak_memory_stats()
                     torch.cuda.ipc_collect()
-                    
-                
+                                    
                 effects = method.eval(full_dataset)
                 evaluator = sci.DatasetEvaluator(full_dataset)
                 eval_results = evaluator.eval(**effects)
                 eval_results = {k: eval_results.get(k, None) for k in ("ate", "erf", "ite", "spill")}
                 eval_results["_metric"] = tune_metric
-                tune.report(eval_results)
+                train.report(eval_results)
 
             objective = tune.with_resources(objective, dict(cfg.algo.tune.resources))
 
@@ -119,8 +151,9 @@ def main(cfg: DictConfig) -> None:
             LOGGER.info("...setting up hyperparameter tuning")
             tune_config = hydra.utils.instantiate(cfg.algo.tune.tune_config)
             run_config = hydra.utils.instantiate(
-                cfg.algo.tune.run_config, name=f"{i:02d}"
-            )
+                cfg.algo.tune.run_config, name=f"{i:02d}", 
+                # stop=time_limiter,        # per-trial time limit
+             )
             ray.shutdown()
             ray.init(
                 ignore_reinit_error=True,

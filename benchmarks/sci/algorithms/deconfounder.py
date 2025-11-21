@@ -6,8 +6,8 @@ import torch.nn.functional as F
 from pytorch_lightning.callbacks import (
     ModelCheckpoint, 
     EarlyStopping, 
-    LearningRateMonitor,
-    RichProgressBar
+    LearningRateMonitor #,
+    # RichProgressBar
 )
 from pytorch_lightning.loggers import WandbLogger
 
@@ -943,7 +943,7 @@ class Deconfounder(SpaceAlgo):
                 mode="min"
             ),
             LearningRateMonitor(logging_interval="step"),
-            RichProgressBar()
+            # RichProgressBar()
         ]
         
         # wandb_logger = WandbLogger(
@@ -960,7 +960,7 @@ class Deconfounder(SpaceAlgo):
             enable_checkpointing=True,
             logger=None,
             gradient_clip_val=1.0,
-            enable_progress_bar=True,
+            enable_progress_bar=False,
             callbacks=callbacks,
             max_epochs=self.epochs_cvae,
             deterministic=True,
@@ -1074,7 +1074,7 @@ class Deconfounder(SpaceAlgo):
                     mode="min"
                 ),
                 LearningRateMonitor(logging_interval="step"),
-                RichProgressBar()
+                # RichProgressBar()
             ]
 
             # wandb_logger = WandbLogger(
