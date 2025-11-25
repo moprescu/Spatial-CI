@@ -13,8 +13,8 @@ spatial_train_test_split:
   # seed: 0
 
 spaceenv: climate_wfsmoke_minrty_disc  # must be a valid spaceenv
-logfile: /global/cfs/cdirs/m4888/CI_HPO/results/${spaceenv}/${hydra:runtime.choices.algo}.jsonl
-tunefile: /global/cfs/cdirs/m4888/CI_HPO/results/${spaceenv}/${hydra:runtime.choices.algo}_tune.parquet
+logfile: /pscratch/sd/a/$USER/CI_HPO/results/${spaceenv}/${hydra:runtime.choices.algo}.jsonl
+tunefile: /pscratch/sd/a/$USER/CI_HPO/results/${spaceenv}/${hydra:runtime.choices.algo}_tune.parquet
 
 
 algo:  # these config must be overwritten by algo/*.yaml
@@ -41,8 +41,8 @@ algo:  # these config must be overwritten by algo/*.yaml
       mode: min
     run_config:
       _target_: ray.air.RunConfig
-      storage_path: /global/cfs/cdirs/m4888/CI_HPO/ray_cache/${spaceenv}/${hydra:runtime.choices.algo}
-      local_dir:    /global/cfs/cdirs/m4888/CI_HPO/ray_results
+      storage_path: /pscratch/sd/a/$USER/CI_HPO/ray_cache/${spaceenv}/${hydra:runtime.choices.algo}
+      local_dir:    /pscratch/sd/a/$USER/CI_HPO/ray_results/${spaceenv}/${hydra:runtime.choices.algo}
     checkpoint_config:
         _target_: ray.train.CheckpointConfig
         checkpoint_frequency: 5      # checkpoint every 5 reports
@@ -61,4 +61,4 @@ tune_map:
 
 hydra:
   run:
-    dir: /global/cfs/cdirs/m4888/CI_HPO/logs/${spaceenv}/${hydra:runtime.choices.algo}
+    dir: /pscratch/sd/a/$USER/CI_HPO/logs/${spaceenv}/${hydra:runtime.choices.algo}

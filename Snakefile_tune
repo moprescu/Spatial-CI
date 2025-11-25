@@ -49,6 +49,6 @@ rule train_spaceenv:
             spaceenv={wildcards.spaceenv} \
             concurrency={params.concurrency} \
             overwrite={params.overwrite} \
-            hydra.run.dir=/global/cfs/cdirs/m4888/CI_HPO/logs/{wildcards.spaceenv}/{wildcards.algo} \
+            hydra.run.dir=/global/homes/a/aik7/CI_HPO/logs/{wildcards.spaceenv}/{wildcards.algo} \
             2> {log.err}
         """
