@@ -12,12 +12,17 @@ conda env create -f environment.yml
 conda activate spacedata
 ```
 
-## Synthetic Data Generation wth Interference
+## Synthetic Data Generation with Interference
 
-It only supports one GPU for training right now. To generate the data:
+It only supports one GPU for training right now. To generate the data with interference:
 ```
 cd space-data
-snakemake -j --configfile conf/pipeline.yaml
+snakemake -s Snakefile -j --configfile conf/pipeline.yaml
+```
+To generate the data with a single-cause confounder, run:
+```
+cd space-data
+snakemake -s Snakefile_singlecause -j --configfile conf/pipeline.yaml
 ```
 
 ## Run Benchmarks
