@@ -330,7 +330,7 @@ class SpaceEnv:
             self.metadata = yaml.load(f, Loader=yaml.BaseLoader)
 
         # -- full data --
-        ext = ".".join(glob(os.path.join(tgtdir, "synthetic_data.*"))[0].split(".")[1:])
+        ext = os.path.splitext(glob(os.path.join(tgtdir, "synthetic_data.*"))[0])[1][1:]
         if ext == "csv":
             data = pd.read_csv(os.path.join(tgtdir, "synthetic_data.csv"), index_col=0, dtype={0: str})
         elif ext in ("tab", "tsv"):
@@ -369,7 +369,9 @@ class SpaceEnv:
             self.treatment_values = np.array([0, 1])
 
         # -- 5. graph, edges --
-        ext = ".".join(glob(os.path.join(tgtdir, "graph.*"))[0].split(".")[1:])
+        filepath = glob(os.path.join(tgtdir, "graph.*"))[0]
+        filename = os.path.basename(filepath)
+        ext = filename.split("graph.", 1)[1] if "graph." in filename else ""
         if ext in ("graphml", "graphml.gz"):
             graph = nx.read_graphml(os.path.join(tgtdir, f"graph.{ext}"))
         elif ext == "tar.gz":
@@ -380,6 +382,8 @@ class SpaceEnv:
             graph = nx.Graph()
             graph.add_nodes_from(coords.index)
             graph.add_edges_from(edges.values)
+        else:
+            raise ValueError(f"Unknown file extension: {ext}")
        
         node2id = {n: i for i, n in enumerate(data.index)}
         self.edge_list = [(node2id[e[0]], node2id[e[1]]) for e in graph.edges]
@@ -446,6 +450,9 @@ class SpaceEnv:
             self.topfeat = ["gmet_mean_summer_sph", "cs_population_density"]
         elif "pm25" in self.metadata["base_name"]:
             self.topfeat = ["value_oc", "value_nh4"]
+        
+        if "singlecause" in self.metadata["base_name"]:
+            self.topfeat = ["single_cause"]
         
         # self.topfeat = list(self.confounding_score["erf"].keys())
         self.radius = int(self.metadata["radius"])

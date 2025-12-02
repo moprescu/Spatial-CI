@@ -27,7 +27,7 @@ algo:  # these config must be overwritten by algo/*.yaml
     param_space: {}
     resources:
       cpu: 4
-      gpu: 1
+      gpu: ${oc.select:gpu_map.${algo.name},1}
     tune_config:
       _target_: ray.tune.TuneConfig
       num_samples: ${oc.select:tune_map.${algo.name},16}
@@ -39,11 +39,14 @@ algo:  # these config must be overwritten by algo/*.yaml
       _target_: ray.air.RunConfig
       storage_path: benchmarks/ray_cache/${spaceenv}/${hydra:runtime.choices.algo}
 
+gpu_map:
+  dapsm: 0
+
 tune_map:
-  deconfounder_r0_unet_tune: 150
-  deconfounder_r1_unet: 150
-  deconfounder_r2_unet: 150
-  deconfounder_r3_unet: 150
+  deconfounder_r0_unet_tune: 50
+  deconfounder_r1_unet_tune: 50
+  deconfounder_r2_unet_tune: 50
+  deconfounder_r3_unet_tune: 50
   
   deconfounder_r0_spatialplus_tune: 150
   deconfounder_r1_spatialplus_tune: 150

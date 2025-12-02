@@ -105,7 +105,6 @@ def main(cfg: DictConfig) -> None:
                     torch.cuda.reset_peak_memory_stats()
                     torch.cuda.ipc_collect()
                     
-                
                 effects = method.eval(full_dataset)
                 evaluator = sci.DatasetEvaluator(full_dataset)
                 eval_results = evaluator.eval(**effects)

@@ -7,7 +7,7 @@ from pytorch_lightning.callbacks import (
     ModelCheckpoint, 
     EarlyStopping, 
     LearningRateMonitor,
-    RichProgressBar
+    # RichProgressBar
 )
 from pytorch_lightning.loggers import WandbLogger
 
@@ -943,7 +943,7 @@ class Deconfounder(SpaceAlgo):
                 mode="min"
             ),
             LearningRateMonitor(logging_interval="step"),
-            RichProgressBar()
+            # RichProgressBar()
         ]
         
         # wandb_logger = WandbLogger(
@@ -960,7 +960,7 @@ class Deconfounder(SpaceAlgo):
             enable_checkpointing=True,
             logger=None,
             gradient_clip_val=1.0,
-            enable_progress_bar=True,
+            enable_progress_bar=False,
             callbacks=callbacks,
             max_epochs=self.epochs_cvae,
             deterministic=True,
@@ -1074,7 +1074,7 @@ class Deconfounder(SpaceAlgo):
                     mode="min"
                 ),
                 LearningRateMonitor(logging_interval="step"),
-                RichProgressBar()
+                # RichProgressBar()
             ]
 
             # wandb_logger = WandbLogger(
@@ -1092,7 +1092,7 @@ class Deconfounder(SpaceAlgo):
                 enable_checkpointing=True,
                 logger=None,
                 gradient_clip_val=1.0,
-                enable_progress_bar=True,
+                enable_progress_bar=False,
                 callbacks=callbacks,
                 max_epochs=self.epochs_head,
                 deterministic=True,
@@ -1124,7 +1124,7 @@ class Deconfounder(SpaceAlgo):
         Evaluate the model with GPU acceleration for large datasets.
         """
         if self.cur_val_p_value < 0.25 or self.cur_val_p_value > 0.75:
-            return {"ate": 100, "erf": 100, "ite": 100}
+            return {}
         
         LOGGER.debug("Computing counterfactuals...")
         ite = []

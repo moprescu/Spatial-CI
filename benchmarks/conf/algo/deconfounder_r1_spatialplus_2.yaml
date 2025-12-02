@@ -29,7 +29,7 @@ tune:
       _args_: [1e-4, 1e-3]
     beta_max:
       _target_: ray.tune.loguniform
-      _args_: [1e-5, 1e-4]
+      _args_: [1e-8, 10]
         
     lam_t:
       _target_: ray.tune.loguniform

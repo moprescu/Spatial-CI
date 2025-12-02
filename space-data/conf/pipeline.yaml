@@ -1,7 +1,7 @@
 upload_dataverse: sci
 download_dataverse: sci
 upload: false
-token: ???
+token: null
 training_threads: 64
 spaceenvs:  
   # nonlocal means NON LOCAL CONFOUNDING, otherwise there is local confounding
@@ -13,7 +13,16 @@ spaceenvs:
   # - pm25grid_rad2_so4_pm_disc
   
   # - nonlocal_pm25grid_rad1_so4_pm_disc
-  - nonlocal_pm25grid_rad2_so4_pm_disc 
+  # - nonlocal_pm25grid_rad2_so4_pm_disc 
   
   # - nonlocal_small_healthdgrid_rad1_pollutn_mortality_disc
   # - nonlocal_small_healthdgrid_rad2_pollutn_mortality_disc
+  
+  # make sparse datasets
+  # - pm25grid_rad1_so4_pm_disc_sparse_10
+  # - pm25grid_rad1_so4_pm_disc_sparse_30
+  
+  # make single cause datasets
+  # - small_healthdgrid_rad1_pollutn_mortality_disc_singlecause_10
+  - small_healthdgrid_rad1_pollutn_mortality_disc_singlecause_30
+  

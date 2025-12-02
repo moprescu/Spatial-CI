@@ -13,16 +13,15 @@ spaceenvs:
   disc:    
     # - nonlocal_small_healthdgrid_rad1_pollutn_mortality_disc
     # - nonlocal_small_healthdgrid_rad2_pollutn_mortality_disc
-        
-      - small_healthdgrid_rad1_pollutn_mortality_disc
-      - small_healthdgrid_rad2_pollutn_mortality_disc
+    
+    - small_healthdgrid_rad1_pollutn_mortality_disc
+    - small_healthdgrid_rad2_pollutn_mortality_disc
     
     # - nonlocal_pm25grid_rad1_so4_pm_disc
     # - nonlocal_pm25grid_rad2_so4_pm_disc
     
-      - pm25grid_rad1_so4_pm_disc
-      - pm25grid_rad2_so4_pm_disc
-
+    # - pm25grid_rad1_so4_pm_disc
+    # - pm25grid_rad2_so4_pm_disc
 
 algorithms:
   cont:
@@ -37,12 +36,12 @@ algorithms:
     # - deconfounder
   disc:
     # spatialplus hyperparam tune
-    - deconfounder_r0_spatialplus_tune
-    - deconfounder_r1_spatialplus_tune
-    - deconfounder_r2_spatialplus_tune
+    # - deconfounder_r0_spatialplus_tune
+    # - deconfounder_r1_spatialplus_tune
+    # - deconfounder_r2_spatialplus_tune
     - deconfounder_r3_spatialplus_tune
     # unet hyperparam tune
-    - deconfounder_r0_unet_tune
-    - deconfounder_r1_unet_tune
-    - deconfounder_r2_unet_tune
-    - deconfounder_r3_unet_tune
+    # - deconfounder_r0_unet_tune
+    # - deconfounder_r1_unet_tune
+    # - deconfounder_r2_unet_tune
+    # - deconfounder_r3_unet_tune
