@@ -8,7 +8,7 @@ The Spatial Deconfounder uses a conditional variational autoencoder (CVAE) with 
 
 To download the necessary requirements:
 ```
-conda env create -f environment.yml
+conda env create -f environment.yaml
 conda activate spacedata
 ```
 
