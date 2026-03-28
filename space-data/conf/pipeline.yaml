@@ -21,8 +21,10 @@ spaceenvs:
   # make sparse datasets
   # - pm25grid_rad1_so4_pm_disc_sparse_10
   # - pm25grid_rad1_so4_pm_disc_sparse_30
+  # - pm25grid_rad1_so4_pm_disc_sparse_70
   
   # make single cause datasets
   # - small_healthdgrid_rad1_pollutn_mortality_disc_singlecause_10
-  - small_healthdgrid_rad1_pollutn_mortality_disc_singlecause_30
+  # - small_healthdgrid_rad1_pollutn_mortality_disc_singlecause_20
+  # - small_healthdgrid_rad1_pollutn_mortality_disc_singlecause_30
   
