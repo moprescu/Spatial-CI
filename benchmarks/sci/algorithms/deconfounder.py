@@ -1239,18 +1239,21 @@ class Deconfounder(SpaceAlgo):
             if change == "center" and a is not None:
                 new_dataset.treatment = np.full_like(new_dataset.treatment, a)
             if self.cvae_radius != 0:
-                B, H, W, C = predict_data.treatments.shape
-                flat = predict_data.treatments.view(B, -1, C)              # [B, (2r+1)^2, 1]
+                # Build counterfactual treatment patch for neighbor covariates
+                counterfactual_data = CVAEDataset(
+                    dataset, nodes, self.max_coords2id, self.cvae_radius,
+                    self.cvae_traindata.treat_scaler, self.cvae_traindata.feat_scaler,
+                    self.cvae_traindata.output_scaler, a=a, change=change,
+                    datatype=dataset.datatype, dataset_radius=dataset.conf_radius
+                )
+                B, H, W, C = counterfactual_data.treatments.shape
+                flat = counterfactual_data.treatments.view(B, -1, C)
                 center_idx = (H * W) // 2
                 flat_wo_center = torch.cat(
                     [flat[:, :center_idx], flat[:, center_idx+1:]], dim=1
-                )  # [B, (2r+1)^2 - 1, 1]
-
-                flat_wo_center = flat_wo_center.squeeze(-1).cpu().numpy()            
+                ).squeeze(-1).cpu().numpy()
 
                 new_dataset.covariates = np.concatenate([new_dataset.covariates, flat_wo_center, latents], axis=1)
-            else:
-                new_dataset.covariates = np.concatenate([new_dataset.covariates, latents], axis=1)
                 
             if self.head == "s2sls-lag1" and not self.s2sls_fit:
                 self.head_model.fit(new_dataset)
