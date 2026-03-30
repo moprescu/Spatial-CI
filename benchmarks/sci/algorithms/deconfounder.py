@@ -43,7 +43,7 @@ class CVAE_Grid(nn.Module):
         kernel_size: int = 3,
         encoder_pool: str = "avg",
         connectivity: int = 4,
-        tau: float = 10.0,
+        tau: float = 100.0,
         eps: float = 1e-5,
     ):
         """
@@ -243,7 +243,7 @@ class CVAE(pl.LightningModule):
         kernel_size: int = 3,
         encoder_pool: str = "avg",
         connectivity: int = 4,
-        tau: float = 10.0,
+        tau: float = 100.0,
         eps: float = 1e-5,
         weight_decay: float = 1e-5,
         lr: float = 1e-3,
@@ -393,7 +393,7 @@ class CVAE(pl.LightningModule):
         a_mc_expanded = a_mc.unsqueeze(1).expand(-1, self.num_samples, -1, -1)
 
         # Compute MC log probabilities
-        mc_log_probs = -F.binary_cross_entropy_with_logits(
+        mc_log_probs = -F.binary_cross_entropy(
             a_probs_inner, a_mc_expanded, reduction='none'
         ).sum(dim=-1)  # [num_samples, num_samples, batch_size]
 
@@ -795,7 +795,7 @@ class Deconfounder(SpaceAlgo):
         kernel_size: int = 3,
         encoder_pool: str = "avg",
         connectivity: int = 4,
-        tau: float = 10.0,
+        tau: float = 100.0,
         eps: float = 1e-5,
         bilinear: bool = False,
         unet_base_chan: int = 16,
@@ -989,6 +989,7 @@ class Deconfounder(SpaceAlgo):
             torch.cuda.empty_cache()
             
             if self.cur_val_p_value < 0.25 or self.cur_val_p_value > 0.75:
+                raise ValueError(f"Validation p_value too low: {self.cur_val_p_value:.3f}")
                 LOGGER.debug(f"Validation p_value too low: {self.cur_val_p_value:.3f}")
                 return
         else:
@@ -1047,6 +1048,8 @@ class Deconfounder(SpaceAlgo):
                 from .pysal_spreg import GMLag
                 self.head_model = GMLag(**self.s2sls_kwargs)
                 self.s2sls_fit = False
+            else:
+                raise ValueError(f"Unsupported model type: {self.head}")
         
             
         if self.head == "unet":
@@ -1128,8 +1131,8 @@ class Deconfounder(SpaceAlgo):
         """
         Evaluate the model with GPU acceleration for large datasets.
         """
-        if self.cur_val_p_value < 0.25 or self.cur_val_p_value > 0.75:
-            return {}
+        # if self.cur_val_p_value < 0.25 or self.cur_val_p_value > 0.75:
+        #     return 1000
         
         LOGGER.debug("Computing counterfactuals...")
         ite = []
@@ -1157,7 +1160,7 @@ class Deconfounder(SpaceAlgo):
     
     def tune_metric(self, dataset: SpaceDataset) -> float:
         if self.cur_val_p_value < 0.25 or self.cur_val_p_value > 0.75:
-            return 10000
+            return self.cur_val_p_value
         
         if self.head == "unet":
             preds = self.predict(dataset, self.max_nodes, a=None, change=None)[:, 0]
@@ -1170,7 +1173,7 @@ class Deconfounder(SpaceAlgo):
             latents = torch.cat([o[latent_idx] for o in latents]).view(predict_data.treatments.shape[0], -1).cpu().numpy()
             
             if np.isnan(latents).any():
-                return 10000
+                return 100000
         
             new_dataset = deepcopy(dataset)
             B = predict_data.treatments.shape[0]
@@ -1190,7 +1193,7 @@ class Deconfounder(SpaceAlgo):
             if self.head == "spatialplus":
                 m = self.head_model.tune_metric(new_dataset)
                 if np.isnan(m):
-                    return 10000
+                    return 1000000
                 else:
                     return m
             if self.head == "s2sls-lag1":
