@@ -1254,7 +1254,9 @@ class Deconfounder(SpaceAlgo):
                 ).squeeze(-1).cpu().numpy()
 
                 new_dataset.covariates = np.concatenate([new_dataset.covariates, flat_wo_center, latents], axis=1)
-                
+            else:
+                new_dataset.covariates = np.concatenate([new_dataset.covariates, latents], axis=1)
+
             if self.head == "s2sls-lag1" and not self.s2sls_fit:
                 self.head_model.fit(new_dataset)
                 self.s2sls_fit = True
