@@ -348,15 +348,15 @@ class CVAE(pl.LightningModule):
         ).reshape(-1, covariates.reshape(batch_size, -1).size(-1))
 
         # Get logits for all samples at once
-        a_logits = self.model.decode(covariates_expanded, z_s)  # [num_samples * batch_size, treatment_dim]
+        a_probs = self.model.decode(covariates_expanded, z_s)  # [num_samples * batch_size, treatment_dim]
 
         # Reshape back and expand true_treatments
-        a_logits = a_logits.view(self.num_samples, batch_size, -1)  # [num_samples, batch_size, treatment_dim]
+        a_probs = a_probs.view(self.num_samples, batch_size, -1)  # [num_samples, batch_size, treatment_dim]
         true_treatments_expanded = true_treatments.unsqueeze(-1).unsqueeze(0).expand(self.num_samples, -1, -1)
 
         # Compute log probabilities for all samples
-        log_probs = -F.binary_cross_entropy_with_logits(
-            a_logits, true_treatments_expanded, reduction='none'
+        log_probs = -F.binary_cross_entropy(
+            a_probs, true_treatments_expanded, reduction='none'
         ).sum(dim=-1)  # [num_samples, batch_size]
 
         test_stat_true = log_probs.mean(dim=0)  # T(a_true) for each sample in batch
@@ -369,9 +369,9 @@ class CVAE(pl.LightningModule):
         ).view(-1, mu.size(-1))  # [num_samples * batch_size, z_dim]
 
         # Get MC logits and sample treatments
-        a_logits_mc = self.model.decode(covariates_expanded, z_s_mc)
-        a_logits_mc = a_logits_mc.view(self.num_samples, batch_size, -1)
-        a_mc = torch.bernoulli(torch.sigmoid(a_logits_mc))  # [num_samples, batch_size, treatment_dim]
+        a_probs_mc = self.model.decode(covariates_expanded, z_s_mc)
+        a_probs_mc = a_probs_mc.view(self.num_samples, batch_size, -1)
+        a_mc = torch.bernoulli(a_probs_mc)  # [num_samples, batch_size, treatment_dim]
 
         # For each MC sample, compute test statistic using vectorized inner sampling
         # Sample z for inner loop: [num_samples, num_samples, batch_size, z_dim]
@@ -386,15 +386,15 @@ class CVAE(pl.LightningModule):
         ).reshape(-1, covariates.reshape(batch_size, -1).size(-1))
 
         # Get inner logits
-        a_logits_inner = self.model.decode(covariates_inner, z_s_inner)
-        a_logits_inner = a_logits_inner.view(self.num_samples, self.num_samples, batch_size, -1)
+        a_probs_inner = self.model.decode(covariates_inner, z_s_inner)
+        a_probs_inner = a_probs_inner.view(self.num_samples, self.num_samples, batch_size, -1)
 
         # Expand a_mc for broadcasting
         a_mc_expanded = a_mc.unsqueeze(1).expand(-1, self.num_samples, -1, -1)
 
         # Compute MC log probabilities
         mc_log_probs = -F.binary_cross_entropy_with_logits(
-            a_logits_inner, a_mc_expanded, reduction='none'
+            a_probs_inner, a_mc_expanded, reduction='none'
         ).sum(dim=-1)  # [num_samples, num_samples, batch_size]
 
         # Average over inner samples to get test statistics
@@ -412,7 +412,7 @@ class CVAE(pl.LightningModule):
         self.current_val_treatment_loss = treatment_loss.detach().cpu().item()
         self.current_val_loss = loss.detach().cpu().item()
         
-        del z_s, z_s_mc, z_s_inner, a_logits, a_logits_mc, a_logits_inner
+        del z_s, z_s_mc, z_s_inner, a_probs, a_probs_mc, a_probs_inner
         del mc_test_stats, test_stat_true, log_probs, mc_log_probs
         torch.cuda.empty_cache()
         
@@ -454,25 +454,30 @@ class CVAE(pl.LightningModule):
     def kldiv(self, mu, logvar):
         mu_ = mu.view(-1, self.model.patch_size * self.model.patch_size, self.model.per_location_latent_dim)
         logvar_ = logvar.view(-1, self.model.patch_size * self.model.patch_size, self.model.per_location_latent_dim)
-        
-        # Spatial smoothness term: tau/2 * E[Z^T L Z] (vectorized)
-        # E[Z^T L Z] = mu^T L mu + tr(L * Sigma) where Sigma = diag(exp(logvar))
-        
+
+        # Fix (b): Add epsilon regularization to avoid singular Laplacian
+        # Prior precision should be τ(L + εI), not just τL
         laplacian = self.model.laplacian.to(mu.device)
-        # Quadratic term: mu^T L mu for all latent dims simultaneously
-        # mu_flat: [batch_size, n_pixels, latent_dim]
-        # L: [n_pixels, n_pixels]
-        mu_L = torch.matmul(mu_.transpose(1, 2), laplacian)  # [batch_size, latent_dim, n_pixels]
-        quadratic_term = torch.sum(mu_L * mu_.transpose(1, 2), dim=2)  # [batch_size, latent_dim]
-        
-        # Trace term: tr(L * diag(exp(logvar))) = sum(diag(L) * exp(logvar))
-        L_diag = torch.diag(laplacian)  # [n_pixels]
-        trace_term = torch.sum(L_diag.unsqueeze(0).unsqueeze(-1) * torch.exp(logvar_), dim=1)  # [batch_size, latent_dim]
-        
-        # Sum over latent dimensions and apply tau scaling
-        kldiv_loss = self.model.tau / 2 * torch.sum(quadratic_term + trace_term, dim=1)  # [batch_size]
-        
-        return kldiv_loss.mean() / (self.n_pixels * self.model.per_location_latent_dim)
+        n_pixels = laplacian.shape[0]
+        laplacian_reg = laplacian + self.model.eps * torch.eye(n_pixels, device=mu.device)
+
+        # Quadratic term: μ^T (L + εI) μ
+        mu_L = torch.matmul(mu_.transpose(1, 2), laplacian_reg)  # [batch, latent_dim, n_pixels]
+        quadratic_term = torch.sum(mu_L * mu_.transpose(1, 2), dim=2)  # [batch, latent_dim]
+
+        # Trace term: tr((L + εI) · diag(exp(logvar))) = sum(diag(L + εI) * exp(logvar))
+        L_diag = torch.diag(laplacian_reg)  # [n_pixels]
+        trace_term = torch.sum(L_diag.unsqueeze(0).unsqueeze(-1) * torch.exp(logvar_), dim=1)  # [batch, latent_dim]
+
+        # Fix (a): Add posterior entropy term: -(1/2) * Σ logvar_i
+        # Without this, there's no incentive for the model to produce tight posteriors
+        entropy_term = -0.5 * torch.sum(logvar_, dim=(1, 2))  # [batch]
+
+        # Full KL: (τ/2) * [μ^T(L+εI)μ + tr((L+εI)·Σ)] - (1/2) * Σ logvar_i
+        kl_prior = self.model.tau / 2 * torch.sum(quadratic_term + trace_term, dim=1)  # [batch]
+        kldiv_loss = kl_prior + entropy_term  # [batch]
+
+        return kldiv_loss.mean() / (n_pixels * self.model.per_location_latent_dim)
     
     def loss(self, treatment_probs, mu, logvar, true_treatments):
         # Term 1: -log p_ψ(A_s | x_s, Z_s) - Treatment reconstruction
@@ -1205,7 +1210,7 @@ class Deconfounder(SpaceAlgo):
             self.head_model.eval()
         
         
-        predict_data = CVAEDataset(dataset, nodes, self.max_coords2id, self.cvae_radius, self.cvae_traindata.treat_scaler, self.cvae_traindata.feat_scaler, self.cvae_traindata.output_scaler, datatype=dataset.datatype, a=a, change=change, dataset_radius=dataset.conf_radius)
+        predict_data = CVAEDataset(dataset, nodes, self.max_coords2id, self.cvae_radius, self.cvae_traindata.treat_scaler, self.cvae_traindata.feat_scaler, self.cvae_traindata.output_scaler, datatype=dataset.datatype, dataset_radius=dataset.conf_radius)
         
         loader = DataLoader(predict_data, batch_size=total_batch_size, shuffle=False, num_workers=4, pin_memory=True)
         latents = self.cvae_trainer.predict(self.cvae_model, loader)
@@ -1228,6 +1233,8 @@ class Deconfounder(SpaceAlgo):
         
         elif self.head == "spatialplus" or self.head == "s2sls-lag1":
             new_dataset = deepcopy(dataset)
+            if change == "center" and a is not None:
+                new_dataset.treatment = np.full_like(new_dataset.treatment, a)
             if self.cvae_radius != 0:
                 B, H, W, C = predict_data.treatments.shape
                 flat = predict_data.treatments.view(B, -1, C)              # [B, (2r+1)^2, 1]

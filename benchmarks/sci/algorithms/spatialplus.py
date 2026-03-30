@@ -300,6 +300,21 @@ class Spatial(SpaceAlgo):
             loss = loss.mean()
 
         return loss.cpu().item()
+    
+    def predict(self, dataset: SpaceDataset) -> np.ndarray:
+        coords = torch.FloatTensor(dataset.coordinates).to(self.device)
+        covars = torch.FloatTensor(dataset.covariates).to(self.device)
+        t = torch.FloatTensor(dataset.treatment).to(self.device)
+        inputs = torch.cat([t[:, None], covars], dim=1)
+
+        coords = (coords - self.coords_mu) / self.coords_std
+        inputs = (inputs - self.inputs_mu) / self.inputs_std
+
+        with torch.no_grad():
+            pred = tps_pred(coords, self.cp_coords, inputs, self.params)
+            pred = pred * self.y_std + self.y_mu
+
+        return pred.cpu().numpy().reshape(-1, 1)
 
 
 class SpatialPlus(SpaceAlgo):
