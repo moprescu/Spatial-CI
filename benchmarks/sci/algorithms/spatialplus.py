@@ -423,7 +423,7 @@ class SpatialPlus(SpaceAlgo):
         )
 
         # 0 coef is intercept, 1,2 are for coords, 3 is treatment
-        self.t_coef = (self.y_params[3] * self.y_std / self.t_mu).cpu().item()
+        self.t_coef = (self.y_params[3] * self.y_std / self.inputs_std[0]).cpu().item()
 
     def eval(self, dataset: SpaceDataset):
         ite = [
