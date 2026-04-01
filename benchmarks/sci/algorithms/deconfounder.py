@@ -43,7 +43,7 @@ class CVAE_Grid(nn.Module):
         kernel_size: int = 3,
         encoder_pool: str = "avg",
         connectivity: int = 4,
-        tau: float = 100.0,
+        tau: float = 10.0,
         eps: float = 1e-5,
     ):
         """
@@ -243,7 +243,7 @@ class CVAE(pl.LightningModule):
         kernel_size: int = 3,
         encoder_pool: str = "avg",
         connectivity: int = 4,
-        tau: float = 100.0,
+        tau: float = 10.0,
         eps: float = 1e-5,
         weight_decay: float = 1e-5,
         lr: float = 1e-3,
@@ -795,7 +795,7 @@ class Deconfounder(SpaceAlgo):
         kernel_size: int = 3,
         encoder_pool: str = "avg",
         connectivity: int = 4,
-        tau: float = 100.0,
+        tau: float = 10.0,
         eps: float = 1e-5,
         bilinear: bool = False,
         unet_base_chan: int = 16,
