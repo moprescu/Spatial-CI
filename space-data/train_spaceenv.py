@@ -1288,8 +1288,8 @@ def main(cfg: DictConfig):
         for a in avals:
             cfdata = df.copy()
             cfdata_graph = utils.add_neighbor_columns(cfdata, nbrs, feat_cols, max_nbrs, map_df,
-                                                     a=a, change="nbr", treatment=spaceenv.treatment, 
-                                 is_binary_treatment=is_binary_treatment, spaceenv=spaceenv, get_t_pct=get_t_pct, spline_basis=spline_basis, 
+                                                     a=a, change="nbr", treatment=spaceenv.treatment,
+                                 is_binary_treatment=is_binary_treatment, spaceenv=spaceenv, get_t_pct=get_t_pct, spline_basis=spline_basis,
                                  extra_colnames=extra_colnames, covariates=covariates)
             predicted = predictor.predict(cfdata_graph)
             spill_mu_cf.append(predicted)
@@ -1299,6 +1299,40 @@ def main(cfg: DictConfig):
         ]
         spill_Y_cf = spill_mu_cf + synth_residuals[:, None]
         spill_Y_cf.columns = [f"spill_Y_synth_{i:02d}" for i in range(len(spill_mu_cf.columns))]
+
+        logging.info("Generating per-neighbor spillover counterfactuals (one neighbor changed per aval).")
+        nbr_positions = [(dr, dc) for dr in range(-radius, radius + 1)
+                         for dc in range(-radius, radius + 1)
+                         if not (dr == 0 and dc == 0)]
+        n_nbr_positions = min(max_nbrs, len(nbr_positions))
+        spill_one_mu_cf_all = []
+        spill_one_Y_cf_all = []
+        spill_one_mu_cf_cols = []
+        spill_one_Y_cf_cols = []
+        for k in range(1, n_nbr_positions + 1):
+            dr, dc = nbr_positions[k - 1]
+            spill_one_mu_cf = []
+            for a in avals:
+                cfdata = df.copy()
+                cfdata_graph = utils.add_neighbor_columns(cfdata, nbrs, feat_cols, max_nbrs, map_df,
+                                                         a=a, change="nbr_k", nbr_idx=k,
+                                                         treatment=spaceenv.treatment,
+                                     is_binary_treatment=is_binary_treatment, spaceenv=spaceenv, get_t_pct=get_t_pct, spline_basis=spline_basis,
+                                     extra_colnames=extra_colnames, covariates=covariates)
+                predicted = predictor.predict(cfdata_graph)
+                spill_one_mu_cf.append(predicted)
+            spill_one_mu_cf = pd.concat(spill_one_mu_cf, axis=1)
+            spill_one_mu_cf.columns = [
+                f"spill_{spaceenv.outcome}_pred_{i:02d}_{dr}_{dc}" for i in range(len(spill_one_mu_cf.columns))
+            ]
+            spill_one_Y_cf = spill_one_mu_cf + synth_residuals[:, None]
+            spill_one_Y_cf.columns = [
+                f"spill_Y_synth_{i:02d}_{dr}_{dc}" for i in range(len(spill_one_mu_cf.columns))
+            ]
+            spill_one_mu_cf_all.append(spill_one_mu_cf)
+            spill_one_Y_cf_all.append(spill_one_Y_cf)
+        spill_one_mu_cf_all = pd.concat(spill_one_mu_cf_all, axis=1)
+        spill_one_Y_cf_all = pd.concat(spill_one_Y_cf_all, axis=1)
 
         logging.info("Plotting counterfactuals and residuals.")
         ix = np.random.choice(len(df), cfg.num_plot_samples)
@@ -1533,16 +1567,16 @@ def main(cfg: DictConfig):
         # === Save results ===
         logging.info(f"Saving synthetic data, graph, and metadata")
         X = df[df.columns.difference([spaceenv.outcome, spaceenv.treatment])]
-        dfout = pd.concat([A, X, mu, mu_cf, Y_synth, Y_cf, spill_mu_cf, spill_Y_cf], axis=1)
+        dfout = pd.concat([A, X, mu, mu_cf, Y_synth, Y_cf, spill_mu_cf, spill_Y_cf, spill_one_mu_cf_all, spill_one_Y_cf_all], axis=1)
 
         # whens saving synthetic data, respect the original data format
         if data_file.endswith("tab"):
             dfout.to_csv(f"{output_dir}/synthetic_data.tab", sep="\t", index=True)
         elif data_file.endswith("parquet"):
             dfout.to_parquet(f"{output_dir}/synthetic_data.parquet")
-            
+
         map_df.to_file("map_df.geojson", driver="GeoJSON")
-        
+
         # save subgraph in the right format
         if graph_file.endswith(("graphml", "graphml.gz")):
             ext = "graphml.gz" if graph_file.endswith("graphml.gz") else "graphml"
@@ -1730,10 +1764,10 @@ def main(cfg: DictConfig):
         spill_mu_cf = []
         for a in avals:
             cfdata = df.copy()
-            cfdata_grid, temp_dir = utils.create_grid_features_compact(cfdata, 
-                                                                       radius=radius, 
-                                                                       a=a, 
-                                                                       change="nbr", 
+            cfdata_grid, temp_dir = utils.create_grid_features_compact(cfdata,
+                                                                       radius=radius,
+                                                                       a=a,
+                                                                       change="nbr",
                                                                        treatment=spaceenv.treatment,
                                                                        is_binary_treatment=is_binary_treatment,
                                                                        spaceenv=spaceenv,
@@ -1749,6 +1783,44 @@ def main(cfg: DictConfig):
         ]
         spill_Y_cf = spill_mu_cf + synth_residuals[:, None]
         spill_Y_cf.columns = [f"spill_Y_synth_{i:02d}" for i in range(len(spill_mu_cf.columns))]
+
+        logging.info("Generating per-neighbor spillover counterfactuals (one neighbor changed per aval).")
+        nbr_positions = [(dr, dc) for dr in range(-radius, radius + 1)
+                         for dc in range(-radius, radius + 1)
+                         if not (dr == 0 and dc == 0)]
+        spill_one_mu_cf_all = []
+        spill_one_Y_cf_all = []
+        for k in range(1, len(nbr_positions) + 1):
+            dr, dc = nbr_positions[k - 1]
+            spill_one_mu_cf = []
+            for a in avals:
+                cfdata = df.copy()
+                cfdata_grid, temp_dir = utils.create_grid_features_compact(cfdata,
+                                                                           radius=radius,
+                                                                           a=a,
+                                                                           change="nbr_k",
+                                                                           nbr_idx=k,
+                                                                           treatment=spaceenv.treatment,
+                                                                           is_binary_treatment=is_binary_treatment,
+                                                                           spaceenv=spaceenv,
+                                                                           get_t_pct=get_t_pct,
+                                                                           spline_basis=spline_basis,
+                                                                           extra_colnames=extra_colnames,
+                                                                           covariates=covariates)
+                predicted = predictor.predict(cfdata_grid)
+                spill_one_mu_cf.append(predicted)
+            spill_one_mu_cf = pd.concat(spill_one_mu_cf, axis=1)
+            spill_one_mu_cf.columns = [
+                f"spill_{spaceenv.outcome}_pred_{i:02d}_{dr}_{dc}" for i in range(len(spill_one_mu_cf.columns))
+            ]
+            spill_one_Y_cf = spill_one_mu_cf + synth_residuals[:, None]
+            spill_one_Y_cf.columns = [
+                f"spill_Y_synth_{i:02d}_{dr}_{dc}" for i in range(len(spill_one_mu_cf.columns))
+            ]
+            spill_one_mu_cf_all.append(spill_one_mu_cf)
+            spill_one_Y_cf_all.append(spill_one_Y_cf)
+        spill_one_mu_cf_all = pd.concat(spill_one_mu_cf_all, axis=1)
+        spill_one_Y_cf_all = pd.concat(spill_one_Y_cf_all, axis=1)
 
         logging.info("Plotting counterfactuals and residuals.")
         ix = np.random.choice(len(df), cfg.num_plot_samples)
@@ -2013,7 +2085,7 @@ def main(cfg: DictConfig):
         # === Save results ===
         logging.info(f"Saving synthetic data, graph, and metadata")
         X = df[df.columns.difference([spaceenv.outcome, spaceenv.treatment])]
-        dfout = pd.concat([A, X, mu, mu_cf, Y_synth, Y_cf, spill_mu_cf, spill_Y_cf], axis=1)
+        dfout = pd.concat([A, X, mu, mu_cf, Y_synth, Y_cf, spill_mu_cf, spill_Y_cf, spill_one_mu_cf_all, spill_one_Y_cf_all], axis=1)
 
         # whens saving synthetic data, respect the original data format
         if data_file.endswith("tab"):

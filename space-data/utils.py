@@ -626,9 +626,9 @@ def haversine(lat1, lon1, lat2, lon2):
     a = np.sin(dphi/2)**2 + np.cos(phi1) * np.cos(phi2) * np.sin(dlambda/2)**2
     return 2 * R * np.arcsin(np.sqrt(a))
 
-def add_neighbor_columns(df, nbrs, nbr_cols, max_nbrs, coords, a=None, change=None, treatment=None, 
-                                 is_binary_treatment=None, spaceenv=None, get_t_pct=None, spline_basis=None, 
-                                 extra_colnames=None, covariates=None):
+def add_neighbor_columns(df, nbrs, nbr_cols, max_nbrs, coords, a=None, change=None, treatment=None,
+                                 is_binary_treatment=None, spaceenv=None, get_t_pct=None, spline_basis=None,
+                                 extra_colnames=None, covariates=None, nbr_idx=None):
     # Initialize neighbor columns with NaN instead of 0
     dftrain = df.copy()
     for feature in nbr_cols:
@@ -669,7 +669,7 @@ def add_neighbor_columns(df, nbrs, nbr_cols, max_nbrs, coords, a=None, change=No
                     # Use mean of all neighbors for missing positions
                     dftrain.at[node, colname] = mean_value
                     
-                if change == "nbr":
+                if change == "nbr" or (change == "nbr_k" and nbr_idx is not None and i == nbr_idx - 1):
                     if treatment == feature:
                         extra_value = a
                     elif feature in extra_colnames:
@@ -682,7 +682,7 @@ def add_neighbor_columns(df, nbrs, nbr_cols, max_nbrs, coords, a=None, change=No
                             col_idx = extra_colnames.index(feature)
                             covariate_val = dftrain.at[nbr_node, covariates[col_idx]]
                             extra_value = covariate_val * a
-                            
+
                     dftrain.at[node, colname] = extra_value
                     
     if change == "center":
@@ -1179,9 +1179,9 @@ def feature_importance(
 
 #     return result_df, temp_dir
 
-def create_grid_features_compact(dftrain, radius=2, fill_missing='mean', a=None, change=None, treatment=None, 
-                                 is_binary_treatment=None, spaceenv=None, get_t_pct=None, spline_basis=None, 
-                                 extra_colnames=None, covariates=None):
+def create_grid_features_compact(dftrain, radius=2, fill_missing='mean', a=None, change=None, treatment=None,
+                                 is_binary_treatment=None, spaceenv=None, get_t_pct=None, spline_basis=None,
+                                 extra_colnames=None, covariates=None, nbr_idx=None):
     """
     Efficiently create grid neighborhoods for each point as 2D arrays (grids),
     storing them in a new column per feature. Also creates individual columns
@@ -1256,7 +1256,12 @@ def create_grid_features_compact(dftrain, radius=2, fill_missing='mean', a=None,
 
     temp_dir = tempfile.mkdtemp(prefix='grid_features_')
     result_df = dftrain.copy()
-    
+
+    # Canonical ordered list of neighbor (dr, dc) positions, excluding center
+    nbr_positions = [(dr, dc) for dr in range(-radius, radius + 1)
+                     for dc in range(-radius, radius + 1)
+                     if not (dr == 0 and dc == 0)]
+
     # For each feature
     for col in feature_cols:
         # Initialize full grid
@@ -1334,6 +1339,10 @@ def create_grid_features_compact(dftrain, radius=2, fill_missing='mean', a=None,
                         for nc in range(neighborhood.shape[1]):
                             if nr != center_r or nc != center_c:  # Not the center
                                 neighborhood[nr, nc] = a
+                elif change == "nbr_k" and nbr_idx is not None:
+                    # Change only the single neighbor at position nbr_idx (1-indexed) to value a
+                    nbr_dr, nbr_dc = nbr_positions[nbr_idx - 1]
+                    neighborhood[center_r + nbr_dr, center_c + nbr_dc] = a
 
             # Apply spatial changes to extra columns (spline/interaction features)
             if extra_colnames is not None and col in extra_colnames:
@@ -1362,6 +1371,9 @@ def create_grid_features_compact(dftrain, radius=2, fill_missing='mean', a=None,
                         for nc in range(neighborhood.shape[1]):
                             if nr != center_r or nc != center_c:  # Not the center
                                 neighborhood[nr, nc] = extra_value
+                elif change == "nbr_k" and nbr_idx is not None:
+                    nbr_dr, nbr_dc = nbr_positions[nbr_idx - 1]
+                    neighborhood[center_r + nbr_dr, center_c + nbr_dc] = extra_value
 
             # Store cell values (with treatment changes applied)
             for dr in range(-radius, radius + 1):
@@ -1391,6 +1403,10 @@ def create_grid_features_compact(dftrain, radius=2, fill_missing='mean', a=None,
                 elif change == "nbr" and (dr != 0 or dc != 0):
                     # Change neighbor cell values to a
                     cell_data[cell_col_name] = [a] * len(cell_data[cell_col_name])
+                elif change == "nbr_k" and nbr_idx is not None:
+                    nbr_dr, nbr_dc = nbr_positions[nbr_idx - 1]
+                    if dr == nbr_dr and dc == nbr_dc:
+                        cell_data[cell_col_name] = [a] * len(cell_data[cell_col_name])
                     
 
         # Apply extra column changes to result_df individual cell columns if needed
@@ -1430,6 +1446,13 @@ def create_grid_features_compact(dftrain, radius=2, fill_missing='mean', a=None,
                         cell_data[cell_col_name] = covariate_vals
                     else:
                         cell_data[cell_col_name] = [extra_value] * len(cell_data[cell_col_name])
+                elif change == "nbr_k" and nbr_idx is not None:
+                    nbr_dr, nbr_dc = nbr_positions[nbr_idx - 1]
+                    if dr == nbr_dr and dc == nbr_dc:
+                        if extra_value is None:
+                            cell_data[cell_col_name] = covariate_vals
+                        else:
+                            cell_data[cell_col_name] = [extra_value] * len(cell_data[cell_col_name])
 
         # Add results
         result_df[f"{col}_grid"] = grids
