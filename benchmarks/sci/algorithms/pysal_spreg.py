@@ -96,23 +96,48 @@ class GMLag(SpaceAlgo):
         self.t_coef = self.model.betas[1, 0] * self.sig_y / self.sig_x[0]
 
     def eval(self, dataset: SpaceDataset):
-        ite = [
-            dataset.outcome + self.t_coef * (a - dataset.treatment)
-            for a in dataset.treatment_values
-        ]
-        ite = np.stack(ite, axis=1)
-        
-        ite_neighbors = [
-            self.model.rho * (self.W_full @ (self.t_coef * (a - dataset.treatment)))
-            for a in dataset.treatment_values
-        ]
-        spill = np.stack(ite_neighbors, axis=1)
+        n = self.W_full.shape[0]
+        rho = float(self.model.rho)
+        M = np.linalg.inv(np.eye(n) - rho * self.W_full)
 
-        effects = {"erf": ite.mean(0), "ite": ite, "spill": (spill[:, 1] - spill[:, 0]).mean()}
+        # ── standard ite (own treatment effect) ──────────────────────────────
+        ite_list = []
+        for a in dataset.treatment_values:
+            delta_t = a - dataset.treatment
+            own_direct = np.diag(M) * (self.t_coef * delta_t)
+            ite_list.append(dataset.outcome + own_direct)
+        ite = np.stack(ite_list, axis=1)
 
+        # ── inward spillover ──────────────────────────────────────────────────
+        # Set ALL other units to 1, then 0; hold i fixed at 0 (its contribution
+        # is excluded by zeroing the diagonal of M before applying the shock)
+        #
+        # shock_1[j] = t_coef * (1 - t_j)   for all j  (everyone moves to 1)
+        # shock_0[j] = t_coef * (0 - t_j)   for all j  (everyone moves to 0)
+        #
+        # effect on i = (M @ shock)[i], but excluding i's own shock:
+        #   = (M - diag(M)) @ shock   [i]
+        #   i.e. use M with diagonal zeroed out so i's own treatment change
+        #   doesn't contaminate the spillover estimate
+
+        M_offdiag = M - np.diag(np.diag(M))   # zero out diagonal
+
+        shock_1 = self.t_coef * (1.0 - dataset.treatment)
+        shock_0 = self.t_coef * (0.0 - dataset.treatment)
+
+        spill_ite = (M_offdiag @ shock_1) - (M_offdiag @ shock_0)
+        # equivalently: M_offdiag @ (shock_1 - shock_0)
+        # = M_offdiag @ (t_coef * 1 - t_coef * 0) * ones
+        # = t_coef * M_offdiag @ ones
+
+        effects = {
+            "erf":       ite.mean(0),
+            "ite":       ite,
+            "spill":     spill_ite.mean(),
+            "spill_ite": spill_ite,
+        }
         if dataset.has_binary_treatment():
             effects["ate"] = self.t_coef
-
         return effects
 
     def available_estimands(self):
@@ -210,33 +235,43 @@ class GMSpatialDurbin(SpaceAlgo):
         self.t_theta = self.theta[0] * self.sig_y / self.sig_x[0]
 
     def eval(self, dataset: SpaceDataset):
-        # --- Direct effects (same as GM_Lag) ---
-        ite = [
-            dataset.outcome + self.t_coef * (a - dataset.treatment)
-            for a in dataset.treatment_values
-        ]
-        ite = np.stack(ite, axis=1)
+        n = self.W_full.shape[0]
+        rho = float(self.model.rho)
+        M = np.linalg.inv(np.eye(n) - rho * self.W_full)
+        M_offdiag = M - np.diag(np.diag(M))
 
-        # --- Spillover: now TWO components ---
-        spill_list = []
+        # ── standard ite ─────────────────────────────────────────────────────
+        ite_list = []
         for a in dataset.treatment_values:
-            delta_t = a - dataset.treatment  # shape (n,)
+            delta_t = a - dataset.treatment
+            direct_shock = (
+                self.t_coef * delta_t
+                + self.t_theta * (self.W_full @ delta_t)
+            )
+            own_direct = np.diag(M) * direct_shock
+            ite_list.append(dataset.outcome + own_direct)
+        ite = np.stack(ite_list, axis=1)
 
-            # # Component 1: spatial lag of Y propagation (rho * W * direct effect)
-            spill_rho   = self.model.rho * (self.W_full @ (self.t_coef * delta_t))
+        # ── inward spillover ──────────────────────────────────────────────────
+        # SDM shock has two parts:
+        #   beta part:  t_coef * delta_t
+        #   theta part: t_theta * W @ delta_t  (neighbors' treatments affect i via WX)
+        # Both are evaluated with everyone else set to 1 vs 0,
+        # i's own contribution removed via M_offdiag
 
-            # Component 2: spatial lag of X (theta_T * W * delta_treatment)
-            # This is the NEW SDM spillover term absent in GM_Lag
-            spill_theta = self.t_theta * (self.W_full @ delta_t)
-
-            spill_list.append(spill_rho + spill_theta)
-
-        spill = np.stack(spill_list, axis=1)
+        for neighbor_val, sign in [(1, 1), (0, -1)]:
+            delta_t = np.full(n, neighbor_val, dtype=float) - dataset.treatment
+            shock = self.t_coef * delta_t + self.t_theta * (self.W_full @ delta_t)
+            if neighbor_val == 1:
+                spill_ite = sign * (M_offdiag @ shock)
+            else:
+                spill_ite += sign * (M_offdiag @ shock)
 
         effects = {
-            "erf":   ite.mean(0),
-            "ite":   ite,
-            "spill": (spill[:, 1] - spill[:, 0]).mean(),
+            "erf":       ite.mean(0),
+            "ite":       ite,
+            "spill":     spill_ite.mean(),
+            "spill_ite": spill_ite,
         }
         if dataset.has_binary_treatment():
             effects["ate"] = self.t_coef
