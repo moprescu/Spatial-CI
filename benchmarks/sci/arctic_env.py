@@ -120,10 +120,12 @@ class ArcticEnv:
         self.treatment_values = np.array([0.0, 1.0])
         self.outcome = outcome.astype(np.float32)
 
-        # ----- 4-connected grid edges ------------------------------------
+        # ----- 8-connected grid edges ------------------------------------
+        # 8-connectivity is needed so that max_nodes selection (k=1 hop)
+        # guarantees all cells in a 3x3 patch exist for the CVAE/UNet.
         edges = []
         for (r, c), idx in coord2idx.items():
-            for dr, dc in [(0, 1), (1, 0)]:
+            for dr, dc in [(0, 1), (1, 0), (1, 1), (1, -1)]:
                 nb = (r + dr, c + dc)
                 if nb in coord2idx:
                     edges.append((idx, coord2idx[nb]))
