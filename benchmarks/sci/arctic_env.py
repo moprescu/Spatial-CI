@@ -13,7 +13,16 @@ Region of interest: East Siberian Sea + Laptev Sea.
 Lag-1 setup: covariates/treatment at time t, outcome at time t+1.
 Time-averaged per pixel to produce a cross-sectional SpaceDataset.
 
-There is no ground-truth ITE / ATE, so counterfactuals are set to zero.
+Counterfactual question (from code_snippet.py):
+    "What would SIC at t+1 have been if LWDN at t were reduced by 5%
+    throughout the region, relative to observed LWDN?"
+
+    A_factual(s) = LWDN(s)
+    A_cf(s)      = 0.95 * LWDN(s)   for all s in the region
+
+The eval records two effects:
+    cf_annual_pct  – average annual % increase in SIC from 5% LWDN reduction
+    cf_summer_pct  – average summer (JJA) % increase in SIC from 5% LWDN reduction
 """
 
 import os
@@ -29,6 +38,15 @@ from spacebench.log import LOGGER
 GOOGLE_DRIVE_FILE_ID = "1lAg393qAWkpXthfAp3v1YohP4B0zNh1h"
 NPY_FILENAME = "Arctic_Netflux_LW_SIC_causality_25km_monthly_1979_2021.npy"
 
+# Number of discrete treatment levels for ERF evaluation
+N_TREATMENT_LEVELS = 10
+
+# Counterfactual reduction factor (5 % decrease in LWDN)
+CF_REDUCTION = 0.95
+
+# JJA month indices (0-indexed: 0=Jan … 5=Jun 6=Jul 7=Aug)
+JJA_MONTHS = {5, 6, 7}
+
 
 def _download_from_gdrive(file_id: str, dest_path: str) -> None:
     """Download a file from Google Drive using gdown."""
@@ -42,17 +60,19 @@ class ArcticEnv:
     """
     Environment for Arctic sea-ice causal inference.
 
-    Treatment : LWDN (binarised at the median)
-    Outcome   : SIC at lag-1
-    Confounder: HFX (the single covariate, masked in ``make()``)
-    Graph     : 4-connected grid over valid pixels
+    Treatment : LWDN (continuous, downward longwave radiation)
+    Outcome   : SIC at lag-1 (sea ice concentration)
+    Confounder: HFX (net heat flux, masked in ``make()``)
+    Graph     : 8-connected grid over valid pixels
+
+    Counterfactual: 5 % uniform reduction of LWDN across the region.
 
     Attributes match the SpaceEnv interface so it plugs into ``run.py``.
     """
 
     def __init__(
         self,
-        name: str = "arctic_lwdn_sic_disc",
+        name: str = "arctic_lwdn_sic_cont",
         dir: str | None = None,
         algo_rad: int = 0,
     ):
@@ -61,6 +81,7 @@ class ArcticEnv:
 
         # Region: East Siberian Sea + Laptev Sea
         region_bounds = (152, 197, 85, 175)
+        start_month = 1
 
         # ----- download --------------------------------------------------
         data_path = os.path.join(self.dir, NPY_FILENAME)
@@ -71,10 +92,10 @@ class ArcticEnv:
 
         data = np.load(data_path)
 
-        # ----- split channels --------------------------------------------
-        conf_raw = data[..., 0].astype(np.float32)  # HFX
-        lwdn_raw = data[..., 1].astype(np.float32)  # LWDN
-        sic_raw = data[..., 2].astype(np.float32)   # SIC
+        # ----- split channels (same order as code_snippet.py) ------------
+        conf_raw = data[..., 0].astype(np.float32)  # HFX  (confounder)
+        lwdn_raw = data[..., 1].astype(np.float32)  # LWDN (treatment)
+        sic_raw = data[..., 2].astype(np.float32)   # SIC  (outcome)
 
         # ----- crop to region --------------------------------------------
         r0, r1, c0, c1 = region_bounds
@@ -97,12 +118,28 @@ class ArcticEnv:
         lwdn_raw = zero_fill(lwdn_raw)
         sic_raw = zero_fill(sic_raw)
 
-        # ----- time-average (lag-1) per pixel ----------------------------
-        lwdn_mean = lwdn_raw[:-1].mean(axis=0)  # treatment at t
-        sic_mean = sic_raw[1:].mean(axis=0)      # outcome at t+1
-        conf_mean = conf_raw[:-1].mean(axis=0)   # confounder at t
+        # ----- month indices for each lag-1 pair -------------------------
+        # t=0 is January 1979.  Lag-1 pairs use treatment at t, outcome
+        # at t+1, so usable timesteps are t = 0 … T-2.
+        months = ((np.arange(T) + (start_month - 1)) % 12)  # 0-indexed
+        pair_months = months[:-1]  # month of the treatment for each pair
+        jja_mask = np.isin(pair_months, list(JJA_MONTHS))
 
-        # ----- valid pixels → nodes --------------------------------------
+        # ----- lag-1 averages per pixel ----------------------------------
+        lwdn_pairs = lwdn_raw[:-1]            # (T-1, H, W) treatment at t
+        sic_pairs = sic_raw[1:]               # (T-1, H, W) outcome  at t+1
+        conf_pairs = conf_raw[:-1]            # (T-1, H, W) confounder at t
+
+        # annual average
+        lwdn_annual = lwdn_pairs.mean(axis=0)
+        sic_annual = sic_pairs.mean(axis=0)
+        conf_annual = conf_pairs.mean(axis=0)
+
+        # summer (JJA) average
+        lwdn_summer = lwdn_pairs[jja_mask].mean(axis=0)
+        sic_summer = sic_pairs[jja_mask].mean(axis=0)
+
+        # ----- valid pixels -> nodes -------------------------------------
         valid_rows, valid_cols = np.where(valid_mask)
         N = len(valid_rows)
 
@@ -110,19 +147,29 @@ class ArcticEnv:
         for idx, (r, c) in enumerate(zip(valid_rows, valid_cols)):
             coord2idx[(int(r), int(c))] = idx
 
-        treatment_cont = lwdn_mean[valid_rows, valid_cols]
-        outcome = sic_mean[valid_rows, valid_cols]
-        confounder = conf_mean[valid_rows, valid_cols]
+        # per-pixel vectors (annual)
+        treatment_annual = lwdn_annual[valid_rows, valid_cols].astype(np.float32)
+        outcome_annual = sic_annual[valid_rows, valid_cols].astype(np.float32)
+        confounder_annual = conf_annual[valid_rows, valid_cols].astype(np.float32)
 
-        # binarise treatment at median
-        median_trt = np.median(treatment_cont)
-        self.treatment = (treatment_cont > median_trt).astype(float)
-        self.treatment_values = np.array([0.0, 1.0])
-        self.outcome = outcome.astype(np.float32)
+        # per-pixel vectors (summer)
+        treatment_summer = lwdn_summer[valid_rows, valid_cols].astype(np.float32)
+
+        # ----- continuous treatment (annual for training) ----------------
+        self.treatment = treatment_annual
+        quantiles = np.linspace(0, 1, N_TREATMENT_LEVELS)
+        self.treatment_values = np.quantile(treatment_annual, quantiles).astype(
+            np.float32
+        )
+        self.outcome = outcome_annual
+
+        # ----- seasonal treatment arrays for counterfactual inference -----
+        self.annual_treatment = treatment_annual
+        self.summer_treatment = treatment_summer
+        self.cf_annual_treatment = (CF_REDUCTION * treatment_annual).astype(np.float32)
+        self.cf_summer_treatment = (CF_REDUCTION * treatment_summer).astype(np.float32)
 
         # ----- 8-connected grid edges ------------------------------------
-        # 8-connectivity is needed so that max_nodes selection (k=1 hop)
-        # guarantees all cells in a 3x3 patch exist for the CVAE/UNet.
         edges = []
         for (r, c), idx in coord2idx.items():
             for dr, dc in [(0, 1), (1, 0), (1, 1), (1, -1)]:
@@ -140,11 +187,10 @@ class ArcticEnv:
 
         # ----- covariates ------------------------------------------------
         self.node2id = {
-            f"{r}_{c}": coord2idx[(r, c)]
-            for (r, c) in coord2idx
+            f"{r}_{c}": coord2idx[(r, c)] for (r, c) in coord2idx
         }
         self.covariates_df = pd.DataFrame(
-            {"hfx": confounder},
+            {"hfx": confounder_annual},
             index=[f"{r}_{c}" for r, c in zip(valid_rows, valid_cols)],
         )
         self.covariate_groups = {"hfx": ["hfx"]}
@@ -156,8 +202,9 @@ class ArcticEnv:
         self.datatype = "grid"
 
         # ----- counterfactuals (no ground truth) -------------------------
-        self.counterfactuals = np.zeros((N, 2), dtype=np.float32)
-        self.spill_counterfactuals = np.zeros((N, 2), dtype=np.float32)
+        n_tv = len(self.treatment_values)
+        self.counterfactuals = np.zeros((N, n_tv), dtype=np.float32)
+        self.spill_counterfactuals = np.zeros((N, n_tv), dtype=np.float32)
 
         # ----- dummy confounding / smoothness scores ---------------------
         self.confounding_score = {
@@ -192,7 +239,7 @@ class ArcticEnv:
         self.metadata = {
             "base_name": "arcticgrid",
             "treatment": "lwdn",
-            "treatment_values": ["0", "1"],
+            "treatment_values": [str(v) for v in self.treatment_values],
             "covariates": ["hfx"],
             "radius": str(self.radius),
         }
@@ -220,8 +267,9 @@ class ArcticEnv:
         if obs_covars_cols:
             obs_covars = self.covariates_df[obs_covars_cols].values
         else:
-            # all covariates are masked → empty observed set
-            obs_covars = np.zeros((len(self.treatment), 0), dtype=np.float32)
+            obs_covars = np.zeros(
+                (len(self.treatment), 0), dtype=np.float32
+            )
 
         miss_covars = self.covariates_df[[missing_group]].values
 
@@ -260,7 +308,15 @@ class ArcticEnv:
             datatype=self.datatype,
         )
 
-        return dataset[self.max_nodes]
+        ds = dataset[self.max_nodes]
+
+        # Seasonal treatment arrays for counterfactual inference.
+        # The eval methods use these to compute annual / summer effects.
+        ds.annual_treatment = self.annual_treatment
+        ds.summer_treatment = self.summer_treatment
+        ds.cf_annual_treatment = self.cf_annual_treatment
+        ds.cf_summer_treatment = self.cf_summer_treatment
+        return ds
 
     def make_all(self):
         """Yield one SpaceDataset per top confounder (just HFX here)."""
@@ -272,10 +328,10 @@ class ArcticEnv:
 
     def __repr__(self) -> str:
         return (
-            f"ArcticEnv({self.name}): Arctic LWDN→SIC causality benchmark\n"
+            f"ArcticEnv({self.name}): Arctic LWDN->SIC causality benchmark\n"
             f"  nodes (valid pixels): {len(self.treatment)}\n"
             f"  edges: {len(self.edge_list)}\n"
-            f"  treatment: binary (LWDN > median)\n"
+            f"  treatment: continuous LWDN\n"
+            f"  counterfactual: 5% LWDN reduction\n"
             f"  confounder: HFX\n"
-            f"  counterfactuals: zeros (no ground truth)\n"
         )

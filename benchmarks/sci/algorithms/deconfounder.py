@@ -634,25 +634,30 @@ class CVAEDataset(Dataset):
         outcomes = torch.from_numpy(self.out_scaled).float()
         ids = nodes
         id2coords = {v: k for k, v in coords2id.items()}
-        
+
         self.treatment_vector = true_treatment[ids]
         self.covariate_vector = covariates[ids]
         self.outcome_vector = outcomes
-        
+
+        # Scale the counterfactual value `a` to match scaled treatment space
+        a_scaled = a
+        if a is not None and treat_scaler is not None and nonbinary_treat_cols:
+            a_scaled = treat_scaler.transform(np.array([[a]]))[0, 0]
+
         self.treatments = torch.zeros(len(ids), 2*radius+1, 2*radius+1, 1)
-        
+
         for ii, n in enumerate(nodes):
             center_coords = id2coords[n]
             for i in range(-radius, radius + 1):
                 for j in range(-radius, radius + 1):
                     cur_coords = (center_coords[0] + i, center_coords[1] + j)
                     if change == "center" and (i, j) == (0, 0):
-                        self.treatments[ii, i + radius, j + radius, 0] = a
+                        self.treatments[ii, i + radius, j + radius, 0] = a_scaled
                     elif change == "nbr" and (i, j) != (0, 0):
-                        self.treatments[ii, i + radius, j + radius, 0] = a
+                        self.treatments[ii, i + radius, j + radius, 0] = a_scaled
                     else:
                         self.treatments[ii, i + radius, j + radius, 0] = true_treatment[coords2id[cur_coords]]
-                    
+
         self.covariates = torch.zeros(len(ids), 2*dataset_radius+1, 2*dataset_radius+1, cov.shape[1])
         
         for ii, n in enumerate(nodes):
@@ -731,34 +736,39 @@ class UNetDataset(Dataset):
         outcomes = torch.from_numpy(self.out_scaled).float()
         ids = nodes
         id2coords = {v: k for k, v in coords2id.items()}
-        
+
+        # Scale the counterfactual value `a` to match scaled treatment space
+        a_scaled = a
+        if a is not None and treat_scaler is not None and nonbinary_treat_cols:
+            a_scaled = treat_scaler.transform(np.array([[a]]))[0, 0]
+
         self.treatments = torch.zeros(len(ids), 2*radius+1, 2*radius+1, 1)
-        
+
         for ii, n in enumerate(nodes):
             center_coords = id2coords[n]
             for i in range(-radius, radius + 1):
                 for j in range(-radius, radius + 1):
                     cur_coords = (center_coords[0] + i, center_coords[1] + j)
                     if change == "center" and (i, j) == (0, 0):
-                        self.treatments[ii, i + radius, j + radius, 0] = a
+                        self.treatments[ii, i + radius, j + radius, 0] = a_scaled
                     elif change == "nbr" and (i, j) != (0, 0):
-                        self.treatments[ii, i + radius, j + radius, 0] = a
+                        self.treatments[ii, i + radius, j + radius, 0] = a_scaled
                     else:
                         self.treatments[ii, i + radius, j + radius, 0] = true_treatment[coords2id[cur_coords]]
-                    
+
         self.covariates = torch.zeros(len(ids), 2*dataset_radius+1, 2*dataset_radius+1, cov.shape[1])
-        
+
         for ii, n in enumerate(nodes):
             center_coords = id2coords[n]
             for i in range(-dataset_radius, dataset_radius + 1):
                 for j in range(-dataset_radius, dataset_radius + 1):
                     cur_coords = (center_coords[0] + i, center_coords[1] + j)
                     self.covariates[ii, i + dataset_radius, j + dataset_radius, :] = covariates[coords2id[cur_coords]]
-        
+
         treat_size = 2*radius + 1
         cov_size = 2*dataset_radius + 1
         target_size = max(treat_size, cov_size)
-        
+
         self.treatments = pad_center(self.treatments, target_size)
         self.covariates = pad_center(self.covariates, target_size)
         self.latents = torch.from_numpy(latent)
@@ -1133,7 +1143,7 @@ class Deconfounder(SpaceAlgo):
         """
         # if self.cur_val_p_value < 0.25 or self.cur_val_p_value > 0.75:
         #     return 1000
-        
+
         LOGGER.debug("Computing counterfactuals...")
         ite = []
         for a in dataset.treatment_values:
@@ -1154,7 +1164,39 @@ class Deconfounder(SpaceAlgo):
 
             s = spill.mean(0)
             effects["spill"] = s[1] - s[0]
-        
+
+        # Per-pixel counterfactual: annual and summer % increase in SIC
+        # from a 5 % LWDN reduction.  CVAE latents stay fixed (observed);
+        # only the outcome head sees the modified treatment.
+        if hasattr(dataset, "cf_annual_treatment") and dataset.cf_annual_treatment is not None:
+            LOGGER.debug("Computing annual / summer counterfactual effects...")
+
+            # --- annual ---
+            preds_annual_f = self.predict(
+                dataset, self.max_nodes, a=None, change=None,
+            )
+            preds_annual_cf = self.predict(
+                dataset, self.max_nodes, a=None, change=None,
+                cf_full_treatment=dataset.cf_annual_treatment,
+            )
+            annual_diff = preds_annual_cf - preds_annual_f
+            effects["cf_annual_pct"] = float(
+                annual_diff.mean() / np.abs(preds_annual_f).mean() * 100
+            )
+
+            # --- summer (JJA) ---
+            preds_summer_f = self.predict(
+                dataset, self.max_nodes, a=None, change=None,
+                cf_full_treatment=dataset.summer_treatment,
+            )
+            preds_summer_cf = self.predict(
+                dataset, self.max_nodes, a=None, change=None,
+                cf_full_treatment=dataset.cf_summer_treatment,
+            )
+            summer_diff = preds_summer_cf - preds_summer_f
+            effects["cf_summer_pct"] = float(
+                summer_diff.mean() / np.abs(preds_summer_f).mean() * 100
+            )
 
         return effects
     
@@ -1204,46 +1246,68 @@ class Deconfounder(SpaceAlgo):
                 
     
     
-    def predict(self, dataset: SpaceDataset, nodes, a, change) -> dict:
+    def predict(self, dataset: SpaceDataset, nodes, a, change,
+                cf_full_treatment=None) -> dict:
         """
         Get outcome predictions with GPU acceleration for large datasets.
+
+        Parameters
+        ----------
+        cf_full_treatment : np.ndarray | None
+            If provided, the outcome head uses this array as ``full_treatment``
+            instead of the observed values.  The CVAE still encodes the
+            *observed* treatments so the latent confounder stays fixed.
+            Shape must match ``dataset.full_treatment``.
         """
         self.cvae_model.eval()
         if self.head == "unet":
             self.head_model.eval()
-        
-        
+
+        # CVAE: always encode from observed treatments -> latents
         predict_data = CVAEDataset(dataset, nodes, self.max_coords2id, self.cvae_radius, self.cvae_traindata.treat_scaler, self.cvae_traindata.feat_scaler, self.cvae_traindata.output_scaler, datatype=dataset.datatype, dataset_radius=dataset.conf_radius)
-        
+
         loader = DataLoader(predict_data, batch_size=total_batch_size, shuffle=False, num_workers=4, pin_memory=True)
         latents = self.cvae_trainer.predict(self.cvae_model, loader)
         latents = torch.cat([o[latent_idx] for o in latents])
-        
+
         if self.head == "unet":
             latents = latents.cpu().numpy()
             torch.cuda.empty_cache()
         elif self.head == "spatialplus" or self.head == "s2sls-lag1":
             latents = latents.view(predict_data.treatments.shape[0], -1).cpu().numpy()
-        
+
+        # Build the dataset seen by the outcome head.  When
+        # cf_full_treatment is given, swap in the counterfactual treatment
+        # so that patch extraction + scaling use the intervened values.
+        if cf_full_treatment is not None:
+            head_dataset = deepcopy(dataset)
+            head_dataset.full_treatment = cf_full_treatment
+            head_a, head_change = None, None
+        else:
+            head_dataset = dataset
+            head_a, head_change = a, change
+
         if self.head == "unet":
-            predict_head_data = UNetDataset(dataset, nodes, self.max_coords2id, self.cvae_radius, self.head_traindata.treat_scaler, self.head_traindata.feat_scaler, self.head_traindata.output_scaler, a=a, change=change, datatype=dataset.datatype, latent=latents, dataset_radius=dataset.conf_radius)
+            predict_head_data = UNetDataset(head_dataset, nodes, self.max_coords2id, self.cvae_radius, self.head_traindata.treat_scaler, self.head_traindata.feat_scaler, self.head_traindata.output_scaler, a=head_a, change=head_change, datatype=dataset.datatype, latent=latents, dataset_radius=dataset.conf_radius)
 
             loader = DataLoader(predict_head_data, batch_size=total_batch_size, shuffle=False, num_workers=4, pin_memory=True)
             preds = torch.cat(self.head_trainer.predict(self.head_model, loader))
             preds = preds.cpu().numpy()
             # scale back the preds
             preds = self.head_traindata.output_scaler.inverse_transform(preds)
-        
+
         elif self.head == "spatialplus" or self.head == "s2sls-lag1":
             new_dataset = deepcopy(dataset)
-            if change == "center" and a is not None:
+            if cf_full_treatment is not None:
+                new_dataset.treatment = cf_full_treatment[nodes] if len(cf_full_treatment) > len(nodes) else cf_full_treatment
+            elif change == "center" and a is not None:
                 new_dataset.treatment = np.full_like(new_dataset.treatment, a)
             if self.cvae_radius != 0:
                 # Build counterfactual treatment patch for neighbor covariates
                 counterfactual_data = CVAEDataset(
-                    dataset, nodes, self.max_coords2id, self.cvae_radius,
+                    head_dataset, nodes, self.max_coords2id, self.cvae_radius,
                     self.cvae_traindata.treat_scaler, self.cvae_traindata.feat_scaler,
-                    self.cvae_traindata.output_scaler, a=a, change=change,
+                    self.cvae_traindata.output_scaler, a=head_a, change=head_change,
                     datatype=dataset.datatype, dataset_radius=dataset.conf_radius
                 )
                 B, H, W, C = counterfactual_data.treatments.shape
@@ -1260,10 +1324,10 @@ class Deconfounder(SpaceAlgo):
             if self.head == "s2sls-lag1" and not self.s2sls_fit:
                 self.head_model.fit(new_dataset)
                 self.s2sls_fit = True
-            
+
             return self.head_model.predict(new_dataset)
-        
-        
+
+
         return preds
     
     def plot_latent(self, dataset: SpaceDataset, filename):

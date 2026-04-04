@@ -176,18 +176,23 @@ class UNetDataset(Dataset):
         outcomes = torch.from_numpy(self.out_scaled).float()
         ids = nodes
         id2coords = {v: k for k, v in coords2id.items()}
-        
+
+        # Scale the counterfactual value `a` to match scaled treatment space
+        a_scaled = a
+        if a is not None and treat_scaler is not None and nonbinary_treat_cols:
+            a_scaled = treat_scaler.transform(np.array([[a]]))[0, 0]
+
         self.treatments = torch.zeros(len(ids), 2*radius+1, 2*radius+1, 1)
-        
+
         for ii, n in enumerate(nodes):
             center_coords = id2coords[n]
             for i in range(-radius, radius + 1):
                 for j in range(-radius, radius + 1):
                     cur_coords = (center_coords[0] + i, center_coords[1] + j)
                     if change == "center" and (i, j) == (0, 0):
-                        self.treatments[ii, i + radius, j + radius, 0] = a
+                        self.treatments[ii, i + radius, j + radius, 0] = a_scaled
                     elif change == "nbr" and (i, j) != (0, 0):
-                        self.treatments[ii, i + radius, j + radius, 0] = a
+                        self.treatments[ii, i + radius, j + radius, 0] = a_scaled
                     else:
                         self.treatments[ii, i + radius, j + radius, 0] = true_treatment[coords2id[cur_coords]]
                     
@@ -376,7 +381,7 @@ class U_Net(SpaceAlgo):
         """
         Evaluate the model with GPU acceleration for large datasets.
         """
-        
+
         LOGGER.debug("Computing counterfactuals...")
         ite = []
         for a in dataset.treatment_values:
@@ -397,7 +402,38 @@ class U_Net(SpaceAlgo):
 
             s = spill.mean(0)
             effects["spill"] = s[1] - s[0]
-        
+
+        # Per-pixel counterfactual: annual and summer % increase in SIC
+        # from a 5 % LWDN reduction.
+        if hasattr(dataset, "cf_annual_treatment") and dataset.cf_annual_treatment is not None:
+            LOGGER.debug("Computing annual / summer counterfactual effects...")
+
+            # --- annual ---
+            preds_annual_f = self.predict(
+                dataset, self.max_nodes, a=None, change=None,
+            )
+            preds_annual_cf = self.predict(
+                dataset, self.max_nodes, a=None, change=None,
+                cf_full_treatment=dataset.cf_annual_treatment,
+            )
+            annual_diff = preds_annual_cf - preds_annual_f
+            effects["cf_annual_pct"] = float(
+                annual_diff.mean() / np.abs(preds_annual_f).mean() * 100
+            )
+
+            # --- summer (JJA) ---
+            preds_summer_f = self.predict(
+                dataset, self.max_nodes, a=None, change=None,
+                cf_full_treatment=dataset.summer_treatment,
+            )
+            preds_summer_cf = self.predict(
+                dataset, self.max_nodes, a=None, change=None,
+                cf_full_treatment=dataset.cf_summer_treatment,
+            )
+            summer_diff = preds_summer_cf - preds_summer_f
+            effects["cf_summer_pct"] = float(
+                summer_diff.mean() / np.abs(preds_summer_f).mean() * 100
+            )
 
         return effects
     
@@ -406,12 +442,26 @@ class U_Net(SpaceAlgo):
         return np.mean((dataset.full_outcome[self.max_nodes] - preds) ** 2)
     
     
-    def predict(self, dataset: SpaceDataset, nodes, a, change) -> dict:
+    def predict(self, dataset: SpaceDataset, nodes, a, change,
+                cf_full_treatment=None) -> dict:
         """
         Get outcome predictions with GPU acceleration for large datasets.
+
+        Parameters
+        ----------
+        cf_full_treatment : np.ndarray | None
+            If provided, uses this as ``full_treatment`` for patch
+            construction instead of the observed values.
         """
         self.head_model.eval()
-        predict_head_data = UNetDataset(dataset, nodes, self.max_coords2id, dataset.conf_radius, self.head_traindata.treat_scaler, self.head_traindata.feat_scaler, self.head_traindata.output_scaler, a=a, change=change, datatype=dataset.datatype, dataset_radius=dataset.conf_radius)
+        if cf_full_treatment is not None:
+            head_dataset = deepcopy(dataset)
+            head_dataset.full_treatment = cf_full_treatment
+            head_a, head_change = None, None
+        else:
+            head_dataset = dataset
+            head_a, head_change = a, change
+        predict_head_data = UNetDataset(head_dataset, nodes, self.max_coords2id, dataset.conf_radius, self.head_traindata.treat_scaler, self.head_traindata.feat_scaler, self.head_traindata.output_scaler, a=head_a, change=head_change, datatype=dataset.datatype, dataset_radius=dataset.conf_radius)
         loader = DataLoader(predict_head_data, batch_size=total_batch_size, shuffle=False, num_workers=4, pin_memory=True)
         preds = torch.cat(self.head_trainer.predict(self.head_model, loader))
         preds = preds.cpu().numpy()

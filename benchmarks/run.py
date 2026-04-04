@@ -169,7 +169,8 @@ def main(cfg: DictConfig) -> None:
                     
             # load evaluator
             evaluator = sci.DatasetEvaluator(full_dataset)
-            eval_results = evaluator.eval(**effects)
+            eval_keys = {"ate", "att", "atc", "ite", "erf", "spill"}
+            eval_results = evaluator.eval(**{k: v for k, v in effects.items() if k in eval_keys})
             eval_results = {k: eval_results.get(k, None) for k in ("ate", "erf", "ite", "spill")}
             eval_results["env"] = env_name
             eval_results["dataset_id"] = i
@@ -184,6 +185,12 @@ def main(cfg: DictConfig) -> None:
             eval_results["miss"] = full_dataset.topfeat[i]
             if hasattr(method, "cur_val_p_value"):
                 eval_results["p_value"] = method.cur_val_p_value
+
+            # Arctic counterfactual: % SIC increase from 5% LWDN reduction
+            if "cf_annual_pct" in effects:
+                eval_results["cf_annual_pct"] = effects["cf_annual_pct"]
+            if "cf_summer_pct" in effects:
+                eval_results["cf_summer_pct"] = effects["cf_summer_pct"]
 
             LOGGER.info(f"eval results: {eval_results}")
 
