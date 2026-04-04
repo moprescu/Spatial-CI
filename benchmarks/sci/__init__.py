@@ -1,4 +1,5 @@
 from sci.env import SpaceEnv, SpaceDataset
+from sci.arctic_env import ArcticEnv
 from sci.datamaster import DataMaster
 from sci.eval import DatasetEvaluator, EnvEvaluator
 import sci.algorithms.datautils

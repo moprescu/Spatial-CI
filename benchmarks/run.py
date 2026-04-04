@@ -12,7 +12,7 @@ from ray import tune
 import torch, gc
 
 import sci
-from sci import SpaceEnv
+from sci import SpaceEnv, ArcticEnv
 from sci.algorithms.datautils import spatial_train_test_split
 
 LOGGER = logging.getLogger(__name__)
@@ -44,8 +44,11 @@ def main(cfg: DictConfig) -> None:
         LOGGER.info(f"Cleaning ray path {raydir}")
         shutil.rmtree(raydir)
 
-    env_name = cfg.spaceenv 
-    env = SpaceEnv(env_name, dir="downloads", algo_rad=0 if not cfg.algo.use_interference else cfg.algo.method.radius)
+    env_name = cfg.spaceenv
+    if env_name.startswith("arctic"):
+        env = ArcticEnv(env_name, dir="downloads", algo_rad=0 if not cfg.algo.use_interference else cfg.algo.method.radius)
+    else:
+        env = SpaceEnv(env_name, dir="downloads", algo_rad=0 if not cfg.algo.use_interference else cfg.algo.method.radius)
     # print(env.coordinates)
         
     for gseed in cfg.global_seeds:

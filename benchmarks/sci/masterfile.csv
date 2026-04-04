@@ -17,3 +17,4 @@ pm25grid_rad1_so4_pm_disc_sparse_10,binary,Particulate matter composition
 pm25grid_rad1_so4_pm_disc_sparse_30,binary,Particulate matter composition
 small_healthdgrid_rad1_pollutn_mortality_disc_singlecause_10,binary,Air Pollution and Mortality
 small_healthdgrid_rad1_pollutn_mortality_disc_singlecause_30,binary,Air Pollution and Mortality
+arctic_lwdn_sic_disc,binary,Arctic Sea Ice
