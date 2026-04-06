@@ -45,22 +45,25 @@ class CVAE_Grid(nn.Module):
         connectivity: int = 4,
         tau: float = 10.0,
         eps: float = 1e-5,
+        binary_treatment: bool = True,
     ):
         """
         CVAE for interference-aware deconfounding on gridded datasets
-        
+
         Args:
             latent_dim: Dimension of latent space Z_s
             radius: Radius for patch-based convolution
             tau: Precision parameter for GMRF prior
             eps: Small constant for numerical stability
+            binary_treatment: If True, use sigmoid + BCE (binary). If False, use linear + Gaussian NLL (continuous).
         """
         super(CVAE_Grid, self).__init__()
-        
+
         self.feature_dim = feature_dim
         self.radius = radius
         self.tau = tau
         self.eps = eps
+        self.binary_treatment = binary_treatment
         self.patch_size = 2 * radius + 1
         self.kernel_size = kernel_size
         # self.per_location_latent_dim = latent_dim
@@ -83,8 +86,15 @@ class CVAE_Grid(nn.Module):
         # self.fc_mu = nn.Linear(self.encoder_flatten_dim, self.latent_dim)
         # self.fc_logvar = nn.Linear(self.encoder_flatten_dim, self.latent_dim)
         
-        # Decoder: One-layer MLP p_ψ(A_s=1|x_s,Z_s) = σ(f_ψ(x_s,Z_s))
-        self.decoder = nn.Linear( self.patch_size * self.patch_size * self.feature_dim + self.latent_dim, 1)
+        # Decoder: One-layer MLP
+        # Binary:     p_ψ(A_s=1|x_s,Z_s) = σ(f_ψ(x_s,Z_s))  → 1 output
+        # Continuous:  p_ψ(A_s|x_s,Z_s) = N(μ_ψ, σ²_ψ)      → 2 outputs (mean, log_var)
+        decoder_input_dim = self.patch_size * self.patch_size * self.feature_dim + self.latent_dim
+        if self.binary_treatment:
+            self.decoder = nn.Linear(decoder_input_dim, 1)
+        else:
+            self.decoder_mu = nn.Linear(decoder_input_dim, 1)
+            self.decoder_logvar = nn.Linear(decoder_input_dim, 1)
         
         # Precompute grid Laplacian matrix L for GMRF prior
         self.register_buffer('laplacian', self._build_patch_laplacian())
@@ -167,24 +177,28 @@ class CVAE_Grid(nn.Module):
     
     def decode(self, x_s, z_s):
         """
-        Decoder: p_ψ(A_s=1|x_s, Z_s) = σ(f_ψ(x_s, Z_s))
-        One-layer MLP
-        
+        Decoder: predicts treatment given features and latent variables.
+        Binary:     p_ψ(A_s=1|x_s, Z_s) = σ(f_ψ(x_s, Z_s))
+        Continuous: p_ψ(A_s|x_s, Z_s) = N(μ_ψ(x_s,Z_s), σ²_ψ(x_s,Z_s))
+
         Args:
             x_s: Features at location [batch_size, patch_size *  patch_size *  feature_dim]
             z_s: Latent variables [batch_size, patch_size *  patch_size *  latent_dim]
-        
+
         Returns:
-            Treatment probability at location s
+            Binary: Treatment probability at location s
+            Continuous: (mean, log_var) tuple
         """
-        # Concatenate features and latent variables
         combined = torch.cat([x_s, z_s], dim=-1)
-        
-        # One-layer MLP with sigmoid activation
-        logits = self.decoder(combined)
-        probs = torch.sigmoid(logits)
-        
-        return probs.squeeze(-1)
+
+        if self.binary_treatment:
+            logits = self.decoder(combined)
+            probs = torch.sigmoid(logits)
+            return probs.squeeze(-1)
+        else:
+            mu = self.decoder_mu(combined).squeeze(-1)
+            logvar = self.decoder_logvar(combined).squeeze(-1)
+            return mu, logvar
     
     def forward(self, treatments, covariates):
         """
@@ -206,9 +220,13 @@ class CVAE_Grid(nn.Module):
         z_s = self.reparameterize(mu, logvar)
         
         # Decode
-        treatment_probs = self.decode(covariates.reshape(covariates.size(0), -1), z_s)
-        
-        return treatment_probs, mu, logvar
+        decode_out = self.decode(covariates.reshape(covariates.size(0), -1), z_s)
+
+        if self.binary_treatment:
+            return decode_out, mu, logvar
+        else:
+            dec_mu, dec_logvar = decode_out
+            return (dec_mu, dec_logvar), mu, logvar
     
     def get_latent(self, treatments, covariates):
         """
@@ -251,6 +269,7 @@ class CVAE(pl.LightningModule):
         beta_epoch_max: int = 10,
         epochs: int = 10,
         datatype: str = "grid",
+        binary_treatment: bool = True,
     ):
         super().__init__()
         self.feature_dim = feature_dim
@@ -263,7 +282,8 @@ class CVAE(pl.LightningModule):
         self.tau = tau
         self.eps = eps
         self.datatype = datatype
-        
+        self.binary_treatment = binary_treatment
+
         if self.datatype == "grid":
             self.model = CVAE_Grid(
                 feature_dim=self.feature_dim,
@@ -275,6 +295,7 @@ class CVAE(pl.LightningModule):
                 connectivity=self.connectivity,
                 tau=self.tau,
                 eps=self.eps,
+                binary_treatment=self.binary_treatment,
             )
         else:
             raise ValueError(f"Unsupported dataset type: {datatype}")
@@ -297,9 +318,9 @@ class CVAE(pl.LightningModule):
         
     def training_step(self, batch, batch_idx):
         treatments, covariates, true_treatments = batch
-        treatment_probs, mu, logvar = self.model(treatments, covariates)
-        
-        treatment_loss, kldiv_loss = self.loss(treatment_probs, mu, logvar, true_treatments)
+        decode_out, mu, logvar = self.model(treatments, covariates)
+
+        treatment_loss, kldiv_loss = self.loss(decode_out, mu, logvar, true_treatments)
         # Combined objective
         if self.beta_epoch_max == 0:
             beta = self.beta_max
@@ -316,9 +337,9 @@ class CVAE(pl.LightningModule):
         
     def validation_step(self, batch, batch_idx):
         treatments, covariates, true_treatments = batch
-        treatment_probs, mu, logvar = self.model(treatments, covariates)
-        
-        treatment_loss, kldiv_loss = self.loss(treatment_probs, mu, logvar, true_treatments)
+        decode_out, mu, logvar = self.model(treatments, covariates)
+
+        treatment_loss, kldiv_loss = self.loss(decode_out, mu, logvar, true_treatments)
         # Combined objective
         if self.beta_epoch_max == 0:
             beta = self.beta_max
@@ -326,12 +347,12 @@ class CVAE(pl.LightningModule):
             beta = min(self.beta_max, self.current_epoch * (self.beta_max / self.beta_epoch_max))
         loss = treatment_loss + beta * kldiv_loss
         max_loss = treatment_loss + self.beta_max * kldiv_loss
-        
+
         self.log("val_loss", loss, on_epoch=True, prog_bar=True)
         self.log("val_max_loss", max_loss, on_epoch=True, prog_bar=True)
         self.log("val_treatment_loss", treatment_loss, on_epoch=True, prog_bar=True)
         self.log("val_kldiv_loss", kldiv_loss, on_epoch=True, prog_bar=True)
-        
+
         # Predictive checks implementation - vectorized
         batch_size = covariates.size(0)
 
@@ -347,55 +368,91 @@ class CVAE(pl.LightningModule):
             self.num_samples, -1, -1
         ).reshape(-1, covariates.reshape(batch_size, -1).size(-1))
 
-        # Get logits for all samples at once
-        a_probs = self.model.decode(covariates_expanded, z_s)  # [num_samples * batch_size, treatment_dim]
+        if self.binary_treatment:
+            # --- Binary predictive checks (Bernoulli) ---
+            a_probs = self.model.decode(covariates_expanded, z_s)
+            a_probs = a_probs.view(self.num_samples, batch_size, -1)
+            true_treatments_expanded = true_treatments.unsqueeze(-1).unsqueeze(0).expand(self.num_samples, -1, -1)
 
-        # Reshape back and expand true_treatments
-        a_probs = a_probs.view(self.num_samples, batch_size, -1)  # [num_samples, batch_size, treatment_dim]
-        true_treatments_expanded = true_treatments.unsqueeze(-1).unsqueeze(0).expand(self.num_samples, -1, -1)
+            log_probs = -F.binary_cross_entropy(
+                a_probs, true_treatments_expanded, reduction='none'
+            ).sum(dim=-1)
 
-        # Compute log probabilities for all samples
-        log_probs = -F.binary_cross_entropy(
-            a_probs, true_treatments_expanded, reduction='none'
-        ).sum(dim=-1)  # [num_samples, batch_size]
+            test_stat_true = log_probs.mean(dim=0)
 
-        test_stat_true = log_probs.mean(dim=0)  # T(a_true) for each sample in batch
+            z_s_mc = self.model.reparameterize(
+                mu.unsqueeze(0).expand(self.num_samples, -1, -1),
+                logvar.unsqueeze(0).expand(self.num_samples, -1, -1)
+            ).view(-1, mu.size(-1))
 
-        # Sample M treatment vectors and compute their test statistics
-        # Sample z for MC sampling: [num_samples, batch_size, z_dim]
-        z_s_mc = self.model.reparameterize(
-            mu.unsqueeze(0).expand(self.num_samples, -1, -1),
-            logvar.unsqueeze(0).expand(self.num_samples, -1, -1)
-        ).view(-1, mu.size(-1))  # [num_samples * batch_size, z_dim]
+            a_probs_mc = self.model.decode(covariates_expanded, z_s_mc)
+            a_probs_mc = a_probs_mc.view(self.num_samples, batch_size, -1)
+            a_mc = torch.bernoulli(a_probs_mc)
 
-        # Get MC logits and sample treatments
-        a_probs_mc = self.model.decode(covariates_expanded, z_s_mc)
-        a_probs_mc = a_probs_mc.view(self.num_samples, batch_size, -1)
-        a_mc = torch.bernoulli(a_probs_mc)  # [num_samples, batch_size, treatment_dim]
+            z_s_inner = self.model.reparameterize(
+                mu.unsqueeze(0).unsqueeze(0).expand(self.num_samples, self.num_samples, -1, -1),
+                logvar.unsqueeze(0).unsqueeze(0).expand(self.num_samples, self.num_samples, -1, -1)
+            ).view(-1, mu.size(-1))
 
-        # For each MC sample, compute test statistic using vectorized inner sampling
-        # Sample z for inner loop: [num_samples, num_samples, batch_size, z_dim]
-        z_s_inner = self.model.reparameterize(
-            mu.unsqueeze(0).unsqueeze(0).expand(self.num_samples, self.num_samples, -1, -1),
-            logvar.unsqueeze(0).unsqueeze(0).expand(self.num_samples, self.num_samples, -1, -1)
-        ).view(-1, mu.size(-1))  # [num_samples^2 * batch_size, z_dim]
+            covariates_inner = covariates.reshape(batch_size, -1).unsqueeze(0).unsqueeze(0).expand(
+                self.num_samples, self.num_samples, -1, -1
+            ).reshape(-1, covariates.reshape(batch_size, -1).size(-1))
 
-        # Expand covariates for inner sampling
-        covariates_inner = covariates.reshape(batch_size, -1).unsqueeze(0).unsqueeze(0).expand(
-            self.num_samples, self.num_samples, -1, -1
-        ).reshape(-1, covariates.reshape(batch_size, -1).size(-1))
+            a_probs_inner = self.model.decode(covariates_inner, z_s_inner)
+            a_probs_inner = a_probs_inner.view(self.num_samples, self.num_samples, batch_size, -1)
 
-        # Get inner logits
-        a_probs_inner = self.model.decode(covariates_inner, z_s_inner)
-        a_probs_inner = a_probs_inner.view(self.num_samples, self.num_samples, batch_size, -1)
+            a_mc_expanded = a_mc.unsqueeze(1).expand(-1, self.num_samples, -1, -1)
 
-        # Expand a_mc for broadcasting
-        a_mc_expanded = a_mc.unsqueeze(1).expand(-1, self.num_samples, -1, -1)
+            mc_log_probs = -F.binary_cross_entropy(
+                a_probs_inner, a_mc_expanded, reduction='none'
+            ).sum(dim=-1)
+        else:
+            # --- Continuous predictive checks (Gaussian) ---
+            dec_out = self.model.decode(covariates_expanded, z_s)
+            dec_mu_all, dec_logvar_all = dec_out
+            dec_mu_all = dec_mu_all.view(self.num_samples, batch_size, -1)
+            dec_logvar_all = dec_logvar_all.view(self.num_samples, batch_size, -1)
+            true_treatments_expanded = true_treatments.unsqueeze(-1).unsqueeze(0).expand(self.num_samples, -1, -1)
 
-        # Compute MC log probabilities
-        mc_log_probs = -F.binary_cross_entropy(
-            a_probs_inner, a_mc_expanded, reduction='none'
-        ).sum(dim=-1)  # [num_samples, num_samples, batch_size]
+            # Gaussian log-likelihood: -0.5 * (logvar + (x - mu)^2 / var)
+            log_probs = -0.5 * (
+                dec_logvar_all + (true_treatments_expanded - dec_mu_all) ** 2 / torch.exp(dec_logvar_all)
+            ).sum(dim=-1)
+
+            test_stat_true = log_probs.mean(dim=0)
+
+            # Sample treatments from the learned Gaussian for MC check
+            z_s_mc = self.model.reparameterize(
+                mu.unsqueeze(0).expand(self.num_samples, -1, -1),
+                logvar.unsqueeze(0).expand(self.num_samples, -1, -1)
+            ).view(-1, mu.size(-1))
+
+            dec_out_mc = self.model.decode(covariates_expanded, z_s_mc)
+            dec_mu_mc, dec_logvar_mc = dec_out_mc
+            dec_mu_mc = dec_mu_mc.view(self.num_samples, batch_size, -1)
+            dec_logvar_mc = dec_logvar_mc.view(self.num_samples, batch_size, -1)
+            # Sample from Gaussian: a ~ N(mu, sigma^2)
+            a_mc = dec_mu_mc + torch.exp(0.5 * dec_logvar_mc) * torch.randn_like(dec_mu_mc)
+
+            z_s_inner = self.model.reparameterize(
+                mu.unsqueeze(0).unsqueeze(0).expand(self.num_samples, self.num_samples, -1, -1),
+                logvar.unsqueeze(0).unsqueeze(0).expand(self.num_samples, self.num_samples, -1, -1)
+            ).view(-1, mu.size(-1))
+
+            covariates_inner = covariates.reshape(batch_size, -1).unsqueeze(0).unsqueeze(0).expand(
+                self.num_samples, self.num_samples, -1, -1
+            ).reshape(-1, covariates.reshape(batch_size, -1).size(-1))
+
+            dec_out_inner = self.model.decode(covariates_inner, z_s_inner)
+            dec_mu_inner, dec_logvar_inner = dec_out_inner
+            dec_mu_inner = dec_mu_inner.view(self.num_samples, self.num_samples, batch_size, -1)
+            dec_logvar_inner = dec_logvar_inner.view(self.num_samples, self.num_samples, batch_size, -1)
+
+            a_mc_expanded = a_mc.unsqueeze(1).expand(-1, self.num_samples, -1, -1)
+
+            mc_log_probs = -0.5 * (
+                dec_logvar_inner + (a_mc_expanded - dec_mu_inner) ** 2 / torch.exp(dec_logvar_inner)
+            ).sum(dim=-1)
 
         # Average over inner samples to get test statistics
         mc_test_stats = mc_log_probs.mean(dim=1)  # [num_samples, batch_size]
@@ -406,16 +463,12 @@ class CVAE(pl.LightningModule):
 
         # Log the mean p-value across the batch
         self.log("val_p_value", p_values.mean(), on_epoch=True, prog_bar=True)
-        # self.log("val_p_value_diff", torch.abs(0.5-p_values.mean()), on_epoch=True, prog_bar=True)
-        # self.log("val_loss_and_p", loss if 0.45 <= p_values.mean() <= 0.55 else 100, on_epoch=True, prog_bar=True)
         self.current_val_p_value = p_values.mean()
         self.current_val_treatment_loss = treatment_loss.detach().cpu().item()
         self.current_val_loss = loss.detach().cpu().item()
-        
-        del z_s, z_s_mc, z_s_inner, a_probs, a_probs_mc, a_probs_inner
-        del mc_test_stats, test_stat_true, log_probs, mc_log_probs
+
         torch.cuda.empty_cache()
-        
+
         return loss
     
     def on_validation_epoch_end(self):
@@ -479,13 +532,20 @@ class CVAE(pl.LightningModule):
 
         return kldiv_loss.mean() / (n_pixels * self.model.per_location_latent_dim)
     
-    def loss(self, treatment_probs, mu, logvar, true_treatments):
+    def loss(self, decode_out, mu, logvar, true_treatments):
         # Term 1: -log p_ψ(A_s | x_s, Z_s) - Treatment reconstruction
-        treatment_loss = F.binary_cross_entropy(treatment_probs, true_treatments.float())
+        if self.binary_treatment:
+            treatment_loss = F.binary_cross_entropy(decode_out, true_treatments.float())
+        else:
+            # Gaussian negative log-likelihood for continuous treatments
+            dec_mu, dec_logvar = decode_out
+            treatment_loss = F.gaussian_nll_loss(
+                dec_mu, true_treatments.float(), torch.exp(dec_logvar)
+            )
 
         # Term 2: β * KL(q_φ || p_θ) - Spatial KL divergence
         kldiv_loss = self.kldiv(mu, logvar)
-        
+
         return treatment_loss, kldiv_loss     
 
     
@@ -913,11 +973,13 @@ class Deconfounder(SpaceAlgo):
         os.environ["PYTORCH_LIGHTNING_DEBUG"] = "1"
         
         LOGGER.debug("Building cvae model...")
-        
+
+        self.binary_treatment = dataset.has_binary_treatment()
         self.cvae_kwargs["feature_dim"] = dataset.covariates.shape[1]
         self.cvae_kwargs["datatype"] = dataset.datatype
         self.cvae_kwargs["radius"] = max(self.cvae_radius, dataset.conf_radius)
-                
+        self.cvae_kwargs["binary_treatment"] = self.binary_treatment
+
         self.cvae_model = CVAE(**self.cvae_kwargs)
         
         LOGGER.debug("Building dataset and dataloader...")
