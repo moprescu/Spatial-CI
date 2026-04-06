@@ -78,6 +78,12 @@ def main(cfg: DictConfig) -> None:
             param_space = dict(hydra.utils.instantiate(cfg.algo.tune.param_space))
             if len(param_space) > 0:
 
+                # Extract small objects from env so the closure doesn't
+                # capture the entire (potentially huge) env object.
+                _env_graph = env.graph
+                _env_radius = env.radius
+                _split_kwargs = {**cfg.spatial_train_test_split, "buffer": cfg.spatial_train_test_split["buffer"] + env.radius}
+
                 def objective(config, _train_ref=None, _test_ref=None, _full_ref=None):
                     _train_dataset = ray.get(_train_ref)
                     _test_dataset = ray.get(_test_ref)
@@ -92,7 +98,7 @@ def main(cfg: DictConfig) -> None:
                     while right_method and tune_metric > 100 and num_trials < MAX_TRIALS:
                         if cfg.algo.needs_train_test_split:
                             tmp_train_ix, tmp_test_ix, _ = spatial_train_test_split(
-                                env.graph, **{**cfg.spatial_train_test_split, "buffer": cfg.spatial_train_test_split["buffer"] + env.radius}
+                                _env_graph, **_split_kwargs
                             )
                             tmp_train_dataset = _full_dataset[tmp_train_ix]
                             tmp_test_dataset = _full_dataset[tmp_test_ix]
