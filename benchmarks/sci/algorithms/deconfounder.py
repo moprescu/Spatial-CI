@@ -1381,14 +1381,19 @@ class Deconfounder(SpaceAlgo):
         effects = {}
         mask = dataset.valid_mask
 
-        # ERF over treatment quantiles
+        node_rows = dataset.coordinates[:, 0]
+        node_cols = dataset.coordinates[:, 1]
+
+        # ERF over treatment quantiles — per pixel (averaged over time)
         ite = []
         for a in dataset.treatment_values:
             X_a = dataset.X.copy()
             X_a[:, 1, :, :] = (a - dataset.lwdn_mu) / dataset.lwdn_sd
             X_a[:, 1, :, :][..., ~mask] = 0.0
-            preds_a = self._temporal_predict_maps(X_a, mask)
-            ite.append(preds_a[:, mask].mean(axis=1, keepdims=True))
+            preds_a = self._temporal_predict_maps(X_a, mask)  # (T-1, H, W)
+            avg_a = preds_a.mean(axis=0)  # (H, W)
+            per_node = avg_a[node_rows, node_cols]
+            ite.append(per_node.reshape(-1, 1))
         ite = np.concatenate(ite, axis=1)
         effects["erf"] = ite.mean(0)
         effects["ite"] = ite

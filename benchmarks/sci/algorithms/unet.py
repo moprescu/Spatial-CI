@@ -766,15 +766,23 @@ class TemporalU_Net(SpaceAlgo):
     def eval(self, dataset: SpaceDataset) -> dict:
         effects = {}
 
-        # ERF over treatment quantiles
+        # The dataset has already been subset to max_nodes in env.make(),
+        # so dataset.coordinates gives the (row, col) of each node we
+        # need to report on.
+        node_rows = dataset.coordinates[:, 0]
+        node_cols = dataset.coordinates[:, 1]
+
+        # ERF over treatment quantiles — per pixel (averaged over time)
         ite = []
         for a in dataset.treatment_values:
             X_a = dataset.X.copy()
             X_a[:, 1, :, :] = (a - dataset.lwdn_mu) / dataset.lwdn_sd
             X_a[:, 1, :, :][..., ~dataset.valid_mask] = 0.0
-            preds_a = self._predict_maps(X_a, dataset.valid_mask)
-            ite.append(preds_a[:, dataset.valid_mask].mean(axis=1, keepdims=True))
-        ite = np.concatenate(ite, axis=1)  # (T-1, n_treatment_values)
+            preds_a = self._predict_maps(X_a, dataset.valid_mask)  # (T-1, H, W)
+            avg_a = preds_a.mean(axis=0)  # (H, W) — average over time
+            per_node = avg_a[node_rows, node_cols]  # (n_nodes,)
+            ite.append(per_node.reshape(-1, 1))
+        ite = np.concatenate(ite, axis=1)  # (n_nodes, n_treatment_values)
         effects["erf"] = ite.mean(0)
         effects["ite"] = ite
 
