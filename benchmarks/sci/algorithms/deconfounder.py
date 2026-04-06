@@ -1068,11 +1068,17 @@ class Deconfounder(SpaceAlgo):
             del checkpoint
             torch.cuda.empty_cache()
             
-            if self.cur_val_p_value < 0.25 or self.cur_val_p_value > 0.75:
+            if dataset.has_binary_treatment():
+                p_range = [0.25, 0.75]
+            else:
+                p_range = [0.1, 0.9]
+            
+            if self.cur_val_p_value < p_range[0] or self.cur_val_p_value > p_range[1]:
                 if tune:
                     LOGGER.debug(f"Validation p_value too low: {self.cur_val_p_value:.3f}")
                 else:
                     raise ValueError(f"Validation p_value too low: {self.cur_val_p_value:.3f}")
+                
         else:
             LOGGER.warning("No best checkpoint found, using final epoch model")
 
