@@ -1071,10 +1071,7 @@ class Deconfounder(SpaceAlgo):
             del checkpoint
             torch.cuda.empty_cache()
             
-            if dataset.has_binary_treatment():
-                p_range = [0.25, 0.75]
-            else:
-                p_range = [0.1, 0.9]
+            p_range = [0.25, 0.75]
             
             if self.cur_val_p_value < p_range[0] or self.cur_val_p_value > p_range[1]:
                 if tune:
