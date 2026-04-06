@@ -637,8 +637,10 @@ class UNetHead(pl.LightningModule):
 def pad_center(tensor, target_size):
     """Pad 4D tensor (B,H,W,C) to target_size x target_size, centered."""
     b, h, w, c = tensor.shape
-    if c == 0:
+    if h == target_size and w == target_size:
         return tensor
+    if c == 0:
+        return torch.zeros(b, target_size, target_size, 0, dtype=tensor.dtype, device=tensor.device)
     pad_h = target_size - h
     pad_w = target_size - w
     assert pad_h >= 0 and pad_w >= 0
