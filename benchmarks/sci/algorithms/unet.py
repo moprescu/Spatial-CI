@@ -787,17 +787,21 @@ class TemporalU_Net(SpaceAlgo):
         effects["ite"] = ite
 
         # Counterfactual: 5% LWDN reduction
+        # Predictions are in standardized SIC space — inverse-standardize
+        # before computing % change so the baseline is in real units.
+        sic_mu, sic_sd = dataset.sic_mu, dataset.sic_sd
+        def to_raw(p):
+            return p * sic_sd + sic_mu
+
         if hasattr(dataset, "X_cf"):
             LOGGER.debug("Computing annual / summer counterfactual effects...")
-            preds_f  = self._predict_maps(dataset.X_factual, dataset.valid_mask)
-            preds_cf = self._predict_maps(dataset.X_cf, dataset.valid_mask)
+            preds_f  = to_raw(self._predict_maps(dataset.X_factual, dataset.valid_mask))
+            preds_cf = to_raw(self._predict_maps(dataset.X_cf, dataset.valid_mask))
 
-            # Annual effect (all timesteps)
             diff_annual = (preds_cf - preds_f)[:, dataset.valid_mask]
             base_annual = np.abs(preds_f[:, dataset.valid_mask])
             effects["cf_annual_pct"] = float(diff_annual.mean() / base_annual.mean() * 100)
 
-            # Summer (JJA) effect
             jja = dataset.jja_mask
             diff_summer = (preds_cf[jja] - preds_f[jja])[:, dataset.valid_mask]
             base_summer = np.abs(preds_f[jja][:, dataset.valid_mask])
@@ -806,8 +810,8 @@ class TemporalU_Net(SpaceAlgo):
         # Counterfactual: +18 W/m² LWDN increase
         if hasattr(dataset, "X_cf_plus18"):
             LOGGER.debug("Computing +18 LWDN counterfactual effects...")
-            preds_f18  = self._predict_maps(dataset.X_factual, dataset.valid_mask)
-            preds_cf18 = self._predict_maps(dataset.X_cf_plus18, dataset.valid_mask)
+            preds_f18  = to_raw(self._predict_maps(dataset.X_factual, dataset.valid_mask))
+            preds_cf18 = to_raw(self._predict_maps(dataset.X_cf_plus18, dataset.valid_mask))
 
             diff18 = (preds_cf18 - preds_f18)[:, dataset.valid_mask]
             base18 = np.abs(preds_f18[:, dataset.valid_mask])

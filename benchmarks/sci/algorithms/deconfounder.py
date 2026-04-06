@@ -1399,10 +1399,16 @@ class Deconfounder(SpaceAlgo):
         effects["ite"] = ite
 
         # Counterfactual: 5% LWDN reduction
+        # Predictions are in standardized SIC space — inverse-standardize
+        # before computing % change so the baseline is in real units.
+        sic_mu, sic_sd = dataset.sic_mu, dataset.sic_sd
+        def to_raw(p):
+            return p * sic_sd + sic_mu
+
         if hasattr(dataset, "X_cf"):
             LOGGER.debug("Computing annual / summer counterfactual effects...")
-            preds_f  = self._temporal_predict_maps(dataset.X_factual, mask)
-            preds_cf = self._temporal_predict_maps(dataset.X_cf, mask)
+            preds_f  = to_raw(self._temporal_predict_maps(dataset.X_factual, mask))
+            preds_cf = to_raw(self._temporal_predict_maps(dataset.X_cf, mask))
 
             diff_annual = (preds_cf - preds_f)[:, mask]
             base_annual = np.abs(preds_f[:, mask])
@@ -1416,8 +1422,8 @@ class Deconfounder(SpaceAlgo):
         # Counterfactual: +18 W/m² LWDN increase
         if hasattr(dataset, "X_cf_plus18"):
             LOGGER.debug("Computing +18 LWDN counterfactual effects...")
-            preds_f18  = self._temporal_predict_maps(dataset.X_factual, mask)
-            preds_cf18 = self._temporal_predict_maps(dataset.X_cf_plus18, mask)
+            preds_f18  = to_raw(self._temporal_predict_maps(dataset.X_factual, mask))
+            preds_cf18 = to_raw(self._temporal_predict_maps(dataset.X_cf_plus18, mask))
 
             diff18 = (preds_cf18 - preds_f18)[:, mask]
             base18 = np.abs(preds_f18[:, mask])
