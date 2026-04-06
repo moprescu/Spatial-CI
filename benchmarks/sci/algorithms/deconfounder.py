@@ -364,9 +364,11 @@ class CVAE(pl.LightningModule):
         ).view(-1, mu.size(-1))  # [num_samples * batch_size, z_dim]
 
         # Expand covariates to match: [num_samples * batch_size, cov_dim]
-        covariates_expanded = covariates.reshape(batch_size, -1).unsqueeze(0).expand(
+        covariates_flat = covariates.reshape(batch_size, -1)
+        cov_dim = covariates_flat.size(-1)
+        covariates_expanded = covariates_flat.unsqueeze(0).expand(
             self.num_samples, -1, -1
-        ).reshape(-1, covariates.reshape(batch_size, -1).size(-1))
+        ).reshape(self.num_samples * batch_size, cov_dim)
 
         if self.binary_treatment:
             # --- Binary predictive checks (Bernoulli) ---
@@ -394,9 +396,9 @@ class CVAE(pl.LightningModule):
                 logvar.unsqueeze(0).unsqueeze(0).expand(self.num_samples, self.num_samples, -1, -1)
             ).view(-1, mu.size(-1))
 
-            covariates_inner = covariates.reshape(batch_size, -1).unsqueeze(0).unsqueeze(0).expand(
+            covariates_inner = covariates_flat.unsqueeze(0).unsqueeze(0).expand(
                 self.num_samples, self.num_samples, -1, -1
-            ).reshape(-1, covariates.reshape(batch_size, -1).size(-1))
+            ).reshape(self.num_samples * self.num_samples * batch_size, cov_dim)
 
             a_probs_inner = self.model.decode(covariates_inner, z_s_inner)
             a_probs_inner = a_probs_inner.view(self.num_samples, self.num_samples, batch_size, -1)
@@ -439,9 +441,9 @@ class CVAE(pl.LightningModule):
                 logvar.unsqueeze(0).unsqueeze(0).expand(self.num_samples, self.num_samples, -1, -1)
             ).view(-1, mu.size(-1))
 
-            covariates_inner = covariates.reshape(batch_size, -1).unsqueeze(0).unsqueeze(0).expand(
+            covariates_inner = covariates_flat.unsqueeze(0).unsqueeze(0).expand(
                 self.num_samples, self.num_samples, -1, -1
-            ).reshape(-1, covariates.reshape(batch_size, -1).size(-1))
+            ).reshape(self.num_samples * self.num_samples * batch_size, cov_dim)
 
             dec_out_inner = self.model.decode(covariates_inner, z_s_inner)
             dec_mu_inner, dec_logvar_inner = dec_out_inner
