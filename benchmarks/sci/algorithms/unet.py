@@ -528,3 +528,292 @@ def spatial_train_test_split_radius(
         f"Length of training, tuning and buffer: {len(training_nodes)} and {len(tuning_nodes)} and {len(buffer_nodes)}"
     )
     return training_nodes, tuning_nodes, buffer_nodes
+
+
+# ======================================================================
+# Temporal UNet — operates on full (C, H, W) spatial maps per timestep
+# ======================================================================
+
+from .utils import Down, Up, DoubleConv, OutConv
+
+
+class ImageUNet(nn.Module):
+    """Standard encoder-decoder UNet for image-to-image prediction.
+
+    Takes (B, n_channels, H, W) → (B, 1, H, W).
+    Handles non-power-of-2 spatial sizes via reflect-padding.
+    """
+
+    def __init__(self, n_channels: int, base_channels: int = 32, n_downs: int = 3, bilinear: bool = True):
+        super().__init__()
+        self.n_channels = n_channels
+        self.n_downs = n_downs
+
+        self.inc = DoubleConv(n_channels, base_channels, radius=1)
+
+        self.downs = nn.ModuleList()
+        ch = base_channels
+        self.enc_channels = [ch]
+        for _ in range(n_downs):
+            out_ch = min(ch * 2, 256)
+            self.downs.append(Down(ch, out_ch))
+            self.enc_channels.append(out_ch)
+            ch = out_ch
+
+        self.ups = nn.ModuleList()
+        for i in range(n_downs):
+            skip_ch = self.enc_channels[-(i + 2)]
+            if bilinear:
+                in_ch = ch + skip_ch
+                out_ch = skip_ch if i < n_downs - 1 else base_channels
+                up = Up.__new__(Up)
+                nn.Module.__init__(up)
+                up.up = nn.Upsample(scale_factor=2, mode='bilinear', align_corners=True)
+                up.conv = DoubleConv(in_ch, out_ch, radius=1)
+            else:
+                half_ch = ch // 2
+                in_ch = half_ch + skip_ch
+                out_ch = skip_ch if i < n_downs - 1 else base_channels
+                up = Up.__new__(Up)
+                nn.Module.__init__(up)
+                up.up = nn.ConvTranspose2d(ch, half_ch, kernel_size=2, stride=2)
+                up.conv = DoubleConv(in_ch, out_ch, radius=1)
+            self.ups.append(up)
+            ch = out_ch
+
+        self.outc = OutConv(base_channels, 1)
+
+    def forward(self, x):
+        orig_h, orig_w = x.shape[2], x.shape[3]
+        divisor = 2 ** self.n_downs
+        pad_h = (divisor - orig_h % divisor) % divisor
+        pad_w = (divisor - orig_w % divisor) % divisor
+        if pad_h > 0 or pad_w > 0:
+            x = F.pad(x, [0, pad_w, 0, pad_h], mode='reflect')
+
+        feats = [self.inc(x)]
+        for d in self.downs:
+            feats.append(d(feats[-1]))
+
+        x = feats[-1]
+        for i, up in enumerate(self.ups):
+            x = up(x, feats[-(i + 2)])
+
+        x = self.outc(x)
+        return x[:, :, :orig_h, :orig_w]
+
+
+class TemporalUNetHead(pl.LightningModule):
+    """PL wrapper for image-to-image UNet on temporal data."""
+
+    def __init__(
+        self,
+        n_channels: int,
+        base_channels: int = 32,
+        n_downs: int = 3,
+        bilinear: bool = True,
+        weight_decay: float = 1e-5,
+        lr: float = 1e-3,
+        epochs: int = 50,
+    ):
+        super().__init__()
+        self.save_hyperparameters()
+        self.model = ImageUNet(n_channels, base_channels, n_downs, bilinear)
+        self.weight_decay = weight_decay
+        self.lr = lr
+        self.epochs = epochs
+
+    def forward(self, x):
+        return self.model(x)
+
+    def predict_step(self, batch, batch_idx):
+        x, y, mask = batch
+        return self.model(x)
+
+    def training_step(self, batch, batch_idx):
+        x, y, mask = batch
+        pred = self.model(x).squeeze(1)  # (B, H, W)
+        loss = F.mse_loss(pred[mask.bool()], y[mask.bool()])
+        self.log("train_loss", loss, on_epoch=True, prog_bar=True)
+        return loss
+
+    def validation_step(self, batch, batch_idx):
+        x, y, mask = batch
+        pred = self.model(x).squeeze(1)
+        loss = F.mse_loss(pred[mask.bool()], y[mask.bool()])
+        self.log("val_loss", loss, on_epoch=True, prog_bar=True)
+        return loss
+
+    def configure_optimizers(self):
+        opt = torch.optim.AdamW(self.parameters(), weight_decay=self.weight_decay, lr=self.lr)
+        sched = torch.optim.lr_scheduler.CosineAnnealingLR(opt, T_max=self.epochs)
+        return {"optimizer": opt, "lr_scheduler": {"scheduler": sched, "monitor": "val_loss"}}
+
+
+class TemporalUNetDataset(Dataset):
+    """Dataset of (X[t], Y[t], valid_mask) tuples for temporal UNet.
+
+    Each sample is one timestep: X[t] is (C, H, W), Y[t] is (H, W).
+
+    Parameters
+    ----------
+    X : np.ndarray, shape (N_time, C, H, W)
+    Y : np.ndarray, shape (N_time, H, W)
+    valid_mask : np.ndarray, shape (H, W), bool
+    indices : array-like of ints — which timesteps to include
+    """
+
+    def __init__(self, X, Y, valid_mask, indices):
+        self.X = torch.from_numpy(X[indices]).float()
+        self.Y = torch.from_numpy(Y[indices]).float()
+        self.mask = torch.from_numpy(valid_mask).float().unsqueeze(0).expand(len(indices), -1, -1)
+
+    def __len__(self):
+        return self.X.shape[0]
+
+    def __getitem__(self, idx):
+        return self.X[idx], self.Y[idx], self.mask[idx]
+
+
+class TemporalU_Net(SpaceAlgo):
+    """Standalone temporal UNet for Arctic-style datasets.
+
+    Trains on full spatial maps per timestep: X[t] (15, H, W) → Y[t] (H, W).
+    Each example is one timestep — no sequence modeling.
+    """
+    supports_binary = False
+    supports_continuous = True
+
+    def __init__(
+        self,
+        base_channels: int = 32,
+        n_downs: int = 3,
+        bilinear: bool = True,
+        weight_decay: float = 1e-5,
+        lr: float = 1e-3,
+        epochs: int = 50,
+        batch_size: int = 8,
+        device: str = None,
+    ):
+        self.model_kwargs = dict(
+            base_channels=base_channels,
+            n_downs=n_downs,
+            bilinear=bilinear,
+            weight_decay=weight_decay,
+            lr=lr,
+            epochs=epochs,
+        )
+        self.epochs = epochs
+        self.batch_size = batch_size
+
+        if device is None:
+            self.device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
+        else:
+            self.device = torch.device(device)
+
+    def fit(self, dataset: SpaceDataset):
+        os.environ["PYTORCH_LIGHTNING_DEBUG"] = "1"
+
+        X, Y = dataset.X, dataset.Y
+        valid_mask = dataset.valid_mask
+        n_channels = X.shape[1]
+
+        train_ds = TemporalUNetDataset(X, Y, valid_mask, dataset.train_idx)
+        val_ds   = TemporalUNetDataset(X, Y, valid_mask, dataset.val_idx)
+
+        train_loader = DataLoader(train_ds, batch_size=self.batch_size, shuffle=True,  num_workers=4, pin_memory=True)
+        val_loader   = DataLoader(val_ds,   batch_size=self.batch_size, shuffle=False, num_workers=4, pin_memory=True)
+
+        self.head = TemporalUNetHead(n_channels=n_channels, **self.model_kwargs)
+
+        callbacks = [
+            ModelCheckpoint(dirpath="temporal_unet_ckpt/", monitor="val_loss", mode="min", save_top_k=3),
+            EarlyStopping(monitor="val_loss", patience=10, mode="min"),
+            LearningRateMonitor(logging_interval="step"),
+        ]
+
+        self.trainer = pl.Trainer(
+            accelerator="auto", devices=1,
+            enable_checkpointing=True, logger=None,
+            gradient_clip_val=1.0, enable_progress_bar=False,
+            callbacks=callbacks, max_epochs=self.epochs,
+            deterministic=True,
+        )
+
+        LOGGER.debug("Training temporal UNet...")
+        self.trainer.fit(self.head, train_dataloaders=train_loader, val_dataloaders=val_loader)
+
+        best = self.trainer.checkpoint_callback.best_model_path
+        if best:
+            ckpt = torch.load(best, map_location=self.head.device)
+            self.head.load_state_dict(ckpt['state_dict'])
+            del ckpt
+            torch.cuda.empty_cache()
+        LOGGER.debug("Finished training temporal UNet.")
+
+    def _predict_maps(self, X_input, valid_mask):
+        """Run UNet on (N, C, H, W) input maps.  Returns (N, H, W) predictions."""
+        self.head.eval()
+        dummy_Y = np.zeros((X_input.shape[0], X_input.shape[2], X_input.shape[3]), dtype=np.float32)
+        ds = TemporalUNetDataset.__new__(TemporalUNetDataset)
+        ds.X = torch.from_numpy(X_input).float()
+        ds.Y = torch.from_numpy(dummy_Y).float()
+        ds.mask = torch.from_numpy(valid_mask).float().unsqueeze(0).expand(len(X_input), -1, -1)
+        loader = DataLoader(ds, batch_size=self.batch_size, shuffle=False, num_workers=4, pin_memory=True)
+        preds = torch.cat(self.trainer.predict(self.head, loader)).squeeze(1).cpu().numpy()
+        return preds  # (N, H, W)
+
+    def eval(self, dataset: SpaceDataset) -> dict:
+        effects = {}
+
+        # ERF over treatment quantiles
+        ite = []
+        for a in dataset.treatment_values:
+            X_a = dataset.X.copy()
+            X_a[:, 1, :, :] = (a - dataset.lwdn_mu) / dataset.lwdn_sd
+            X_a[:, 1, :, :][..., ~dataset.valid_mask] = 0.0
+            preds_a = self._predict_maps(X_a, dataset.valid_mask)
+            ite.append(preds_a[:, dataset.valid_mask].mean(axis=1, keepdims=True))
+        ite = np.concatenate(ite, axis=1)  # (T-1, n_treatment_values)
+        effects["erf"] = ite.mean(0)
+        effects["ite"] = ite
+
+        # Counterfactual: 5% LWDN reduction
+        if hasattr(dataset, "X_cf"):
+            LOGGER.debug("Computing annual / summer counterfactual effects...")
+            preds_f  = self._predict_maps(dataset.X_factual, dataset.valid_mask)
+            preds_cf = self._predict_maps(dataset.X_cf, dataset.valid_mask)
+
+            # Annual effect (all timesteps)
+            diff_annual = (preds_cf - preds_f)[:, dataset.valid_mask]
+            base_annual = np.abs(preds_f[:, dataset.valid_mask])
+            effects["cf_annual_pct"] = float(diff_annual.mean() / base_annual.mean() * 100)
+
+            # Summer (JJA) effect
+            jja = dataset.jja_mask
+            diff_summer = (preds_cf[jja] - preds_f[jja])[:, dataset.valid_mask]
+            base_summer = np.abs(preds_f[jja][:, dataset.valid_mask])
+            effects["cf_summer_pct"] = float(diff_summer.mean() / base_summer.mean() * 100)
+
+        # Counterfactual: +18 W/m² LWDN increase
+        if hasattr(dataset, "X_cf_plus18"):
+            LOGGER.debug("Computing +18 LWDN counterfactual effects...")
+            preds_f18  = self._predict_maps(dataset.X_factual, dataset.valid_mask)
+            preds_cf18 = self._predict_maps(dataset.X_cf_plus18, dataset.valid_mask)
+
+            diff18 = (preds_cf18 - preds_f18)[:, dataset.valid_mask]
+            base18 = np.abs(preds_f18[:, dataset.valid_mask])
+            effects["cf_plus18_annual_pct"] = float(diff18.mean() / base18.mean() * 100)
+
+            jja = dataset.jja_mask
+            diff18_s = (preds_cf18[jja] - preds_f18[jja])[:, dataset.valid_mask]
+            base18_s = np.abs(preds_f18[jja][:, dataset.valid_mask])
+            effects["cf_plus18_summer_pct"] = float(diff18_s.mean() / base18_s.mean() * 100)
+
+        return effects
+
+    def tune_metric(self, dataset: SpaceDataset) -> float:
+        preds = self._predict_maps(dataset.X[dataset.test_idx], dataset.valid_mask)
+        Y_true = dataset.Y[dataset.test_idx]
+        mask = dataset.valid_mask
+        return float(np.mean((preds[:, mask] - Y_true[:, mask]) ** 2))

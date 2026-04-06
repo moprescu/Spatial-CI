@@ -15,6 +15,7 @@ from torch.utils.data import Dataset, DataLoader
 from sklearn.preprocessing import StandardScaler
 
 from .utils import UNet, get_k_hop_neighbors, DoubleConvMultiChannel
+from .unet import TemporalUNetHead, TemporalUNetDataset
 import networkx as nx
 
 from sci import SpaceDataset
@@ -1142,13 +1143,13 @@ class Deconfounder(SpaceAlgo):
         
             
         if self.head == "unet":
-            
+
             self.unet_kwargs["feature_dim"] = dataset.covariates.shape[1] + (self.cvae_kwargs["encoder_conv2"] // 2)
             self.unet_kwargs["datatype"] = dataset.datatype
             self.unet_kwargs["radius"] = max(self.cvae_radius, dataset.conf_radius)
-            
+
             self.head_model = UNetHead(**self.unet_kwargs)
-            
+
             self.head_traindata = UNetDataset(dataset, self.train_ix, self.max_coords2id, self.cvae_radius, datatype=dataset.datatype, latent=train_latents, dataset_radius=dataset.conf_radius)
             self.head_valdata = UNetDataset(dataset, self.test_ix, self.max_coords2id, self.cvae_radius, self.head_traindata.treat_scaler, self.head_traindata.feat_scaler, self.head_traindata.output_scaler, datatype=dataset.datatype, latent=val_latents, dataset_radius=dataset.conf_radius)
 
@@ -1174,15 +1175,6 @@ class Deconfounder(SpaceAlgo):
                 # RichProgressBar()
             ]
 
-            # wandb_logger = WandbLogger(
-            #     project="cvae-treatment-model",  # Your project name
-            #     name="outcome",          # Run name
-            #     log_model=False,                  # Log model checkpoints
-            #     save_dir="./wandb_logs",
-            #     config=self.unet_kwargs,
-            #     offline=True,
-            # )
-
             self.head_trainer = pl.Trainer(
                 accelerator="auto",
                 devices=1,
@@ -1205,7 +1197,7 @@ class Deconfounder(SpaceAlgo):
                 LOGGER.debug(f"Loading best model from: {best_checkpoint_path}")
                 checkpoint = torch.load(best_checkpoint_path, map_location=self.head_model.device)
                 self.head_model.load_state_dict(checkpoint['state_dict'])
-                
+
                 del checkpoint
                 torch.cuda.empty_cache()
             else:
@@ -1213,15 +1205,124 @@ class Deconfounder(SpaceAlgo):
 
             LOGGER.debug("Finished training outcome model.")
 
+        if self.head == "temporal_unet":
+            # ---- Temporal UNet head: CVAE latents + full spatial maps ----
+            # Extract CVAE latents for ALL max_nodes (center pixel only)
+            LOGGER.debug("Extracting latents for full spatial grid...")
+            all_data = CVAEDataset(
+                dataset, self.max_nodes, self.max_coords2id, self.cvae_radius,
+                self.cvae_traindata.treat_scaler, self.cvae_traindata.feat_scaler,
+                self.cvae_traindata.output_scaler, datatype=dataset.datatype,
+                dataset_radius=dataset.conf_radius,
+            )
+            all_loader = DataLoader(all_data, batch_size=total_batch_size, shuffle=False, num_workers=4, pin_memory=True)
+            all_latents = self.cvae_trainer.predict(self.cvae_model, all_loader)
+            # Center pixel latent: (N_nodes, latent_dim)
+            all_latents = torch.cat([o[latent_idx] for o in all_latents]).cpu().numpy()
+            per_loc_dim = self.cvae_kwargs["encoder_conv2"] // 2
+            patch_size = 2 * max(self.cvae_radius, dataset.conf_radius) + 1
+            center = patch_size // 2
+            all_latents = all_latents.reshape(-1, patch_size, patch_size, per_loc_dim)
+            all_latents = all_latents[:, center, center, :]  # (N_nodes, latent_dim)
+
+            # Map latents to (H, W, latent_dim) grid
+            grid_H, grid_W = dataset.grid_H, dataset.grid_W
+            latent_map = np.zeros((grid_H, grid_W, per_loc_dim), dtype=np.float32)
+            coords = dataset.full_coordinates
+            for i, node_idx in enumerate(self.max_nodes):
+                r, c = coords[node_idx]
+                latent_map[r, c, :] = all_latents[i]
+
+            # Broadcast to (latent_dim, H, W) and tile across timesteps
+            latent_channels = latent_map.transpose(2, 0, 1)  # (latent_dim, H, W)
+            n_time = dataset.X.shape[0]
+            latent_tiled = np.broadcast_to(
+                latent_channels[None, :, :, :], (n_time, per_loc_dim, grid_H, grid_W)
+            ).copy()
+
+            # Augmented input: X[t] + latent channels → (T-1, 15+latent_dim, H, W)
+            X_aug = np.concatenate([dataset.X, latent_tiled], axis=1).astype(np.float32)
+            self._latent_channels = latent_channels  # save for predict
+            self._per_loc_dim = per_loc_dim
+
+            n_channels_aug = X_aug.shape[1]
+            train_ds = TemporalUNetDataset(X_aug, dataset.Y, dataset.valid_mask, dataset.train_idx)
+            val_ds   = TemporalUNetDataset(X_aug, dataset.Y, dataset.valid_mask, dataset.val_idx)
+
+            t_batch = min(total_batch_size, 16)
+            loader = DataLoader(train_ds, batch_size=t_batch, shuffle=True, num_workers=4, pin_memory=True)
+            val_loader = DataLoader(val_ds, batch_size=t_batch, shuffle=False, num_workers=4, pin_memory=True)
+
+            self.head_model = TemporalUNetHead(
+                n_channels=n_channels_aug,
+                base_channels=self.unet_kwargs.get("unet_base_chan", 32),
+                n_downs=3,
+                bilinear=self.unet_kwargs.get("bilinear", True),
+                weight_decay=self.unet_kwargs.get("weight_decay", 1e-5),
+                lr=self.unet_kwargs.get("lr", 1e-3),
+                epochs=self.epochs_head,
+            )
+
+            callbacks = [
+                ModelCheckpoint(dirpath="temporal_cvae_unet_ckpt/", monitor="val_loss", mode="min", save_top_k=3),
+                EarlyStopping(monitor="val_loss", patience=10, mode="min"),
+                LearningRateMonitor(logging_interval="step"),
+            ]
+
+            self.head_trainer = pl.Trainer(
+                accelerator="auto", devices=1,
+                enable_checkpointing=True, logger=None,
+                gradient_clip_val=1.0, enable_progress_bar=False,
+                callbacks=callbacks, max_epochs=self.epochs_head,
+                deterministic=True,
+            )
+
+            LOGGER.debug("Training temporal UNet outcome head...")
+            self.head_trainer.fit(self.head_model, train_dataloaders=loader, val_dataloaders=val_loader)
+
+            best = self.head_trainer.checkpoint_callback.best_model_path
+            if best:
+                ckpt = torch.load(best, map_location=self.head_model.device)
+                self.head_model.load_state_dict(ckpt['state_dict'])
+                del ckpt
+                torch.cuda.empty_cache()
+            LOGGER.debug("Finished training temporal UNet outcome head.")
+
         
         
         
+    # ---- Temporal UNet helpers ----------------------------------------
+
+    def _augment_X(self, X_input):
+        """Concatenate CVAE latent channels to temporal input maps."""
+        n_time = X_input.shape[0]
+        latent_tiled = np.broadcast_to(
+            self._latent_channels[None, :, :, :],
+            (n_time, self._per_loc_dim, X_input.shape[2], X_input.shape[3]),
+        ).copy()
+        return np.concatenate([X_input, latent_tiled], axis=1).astype(np.float32)
+
+    def _temporal_predict_maps(self, X_input, valid_mask):
+        """Run temporal UNet on (N, C, H, W).  Returns (N, H, W)."""
+        self.head_model.eval()
+        X_aug = self._augment_X(X_input)
+        dummy_Y = np.zeros((X_aug.shape[0], X_aug.shape[2], X_aug.shape[3]), dtype=np.float32)
+        ds = TemporalUNetDataset.__new__(TemporalUNetDataset)
+        ds.X = torch.from_numpy(X_aug).float()
+        ds.Y = torch.from_numpy(dummy_Y).float()
+        ds.mask = torch.from_numpy(valid_mask).float().unsqueeze(0).expand(len(X_aug), -1, -1)
+        t_batch = min(total_batch_size, 16)
+        loader = DataLoader(ds, batch_size=t_batch, shuffle=False, num_workers=4, pin_memory=True)
+        preds = torch.cat(self.head_trainer.predict(self.head_model, loader)).squeeze(1).cpu().numpy()
+        return preds
+
+    # ---- eval / tune_metric -------------------------------------------
+
     def eval(self, dataset: SpaceDataset) -> dict:
-        """
-        Evaluate the model with GPU acceleration for large datasets.
-        """
-        # if self.cur_val_p_value < 0.25 or self.cur_val_p_value > 0.75:
-        #     return 1000
+        """Evaluate the model."""
+
+        if self.head == "temporal_unet":
+            return self._temporal_eval(dataset)
 
         LOGGER.debug("Computing counterfactuals...")
         ite = []
@@ -1245,12 +1346,9 @@ class Deconfounder(SpaceAlgo):
             effects["spill"] = s[1] - s[0]
 
         # Per-pixel counterfactual: annual and summer % increase in SIC
-        # from a 5 % LWDN reduction.  CVAE latents stay fixed (observed);
-        # only the outcome head sees the modified treatment.
         if hasattr(dataset, "cf_annual_treatment") and dataset.cf_annual_treatment is not None:
             LOGGER.debug("Computing annual / summer counterfactual effects...")
 
-            # --- annual ---
             preds_annual_f = self.predict(
                 dataset, self.max_nodes, a=None, change=None,
             )
@@ -1263,7 +1361,6 @@ class Deconfounder(SpaceAlgo):
                 annual_diff.mean() / np.abs(preds_annual_f).mean() * 100
             )
 
-            # --- summer (JJA) ---
             preds_summer_f = self.predict(
                 dataset, self.max_nodes, a=None, change=None,
                 cf_full_treatment=dataset.summer_treatment,
@@ -1278,35 +1375,85 @@ class Deconfounder(SpaceAlgo):
             )
 
         return effects
-    
+
+    def _temporal_eval(self, dataset: SpaceDataset) -> dict:
+        """Eval for temporal_unet head using full spatial maps."""
+        effects = {}
+        mask = dataset.valid_mask
+
+        # ERF over treatment quantiles
+        ite = []
+        for a in dataset.treatment_values:
+            X_a = dataset.X.copy()
+            X_a[:, 1, :, :] = (a - dataset.lwdn_mu) / dataset.lwdn_sd
+            X_a[:, 1, :, :][..., ~mask] = 0.0
+            preds_a = self._temporal_predict_maps(X_a, mask)
+            ite.append(preds_a[:, mask].mean(axis=1, keepdims=True))
+        ite = np.concatenate(ite, axis=1)
+        effects["erf"] = ite.mean(0)
+        effects["ite"] = ite
+
+        # Counterfactual: 5% LWDN reduction
+        if hasattr(dataset, "X_cf"):
+            LOGGER.debug("Computing annual / summer counterfactual effects...")
+            preds_f  = self._temporal_predict_maps(dataset.X_factual, mask)
+            preds_cf = self._temporal_predict_maps(dataset.X_cf, mask)
+
+            diff_annual = (preds_cf - preds_f)[:, mask]
+            base_annual = np.abs(preds_f[:, mask])
+            effects["cf_annual_pct"] = float(diff_annual.mean() / base_annual.mean() * 100)
+
+            jja = dataset.jja_mask
+            diff_summer = (preds_cf[jja] - preds_f[jja])[:, mask]
+            base_summer = np.abs(preds_f[jja][:, mask])
+            effects["cf_summer_pct"] = float(diff_summer.mean() / base_summer.mean() * 100)
+
+        # Counterfactual: +18 W/m² LWDN increase
+        if hasattr(dataset, "X_cf_plus18"):
+            LOGGER.debug("Computing +18 LWDN counterfactual effects...")
+            preds_f18  = self._temporal_predict_maps(dataset.X_factual, mask)
+            preds_cf18 = self._temporal_predict_maps(dataset.X_cf_plus18, mask)
+
+            diff18 = (preds_cf18 - preds_f18)[:, mask]
+            base18 = np.abs(preds_f18[:, mask])
+            effects["cf_plus18_annual_pct"] = float(diff18.mean() / base18.mean() * 100)
+
+            jja = dataset.jja_mask
+            diff18_s = (preds_cf18[jja] - preds_f18[jja])[:, mask]
+            base18_s = np.abs(preds_f18[jja][:, mask])
+            effects["cf_plus18_summer_pct"] = float(diff18_s.mean() / base18_s.mean() * 100)
+
+        return effects
+
     def tune_metric(self, dataset: SpaceDataset) -> float:
-        # if self.cur_val_p_value < 0.25 or self.cur_val_p_value > 0.75:
-        #     return self.cur_val_p_value
-        
+        if self.head == "temporal_unet":
+            preds = self._temporal_predict_maps(dataset.X[dataset.test_idx], dataset.valid_mask)
+            Y_true = dataset.Y[dataset.test_idx]
+            mask = dataset.valid_mask
+            return float(np.mean((preds[:, mask] - Y_true[:, mask]) ** 2))
+
         if self.head == "unet":
             preds = self.predict(dataset, self.max_nodes, a=None, change=None)[:, 0]
             return np.mean((dataset.full_outcome[self.max_nodes] - preds) ** 2)
         elif self.head == "spatialplus" or self.head == "s2sls-lag1":
             predict_data = CVAEDataset(dataset, self.max_nodes, self.max_coords2id, self.cvae_radius, self.cvae_traindata.treat_scaler, self.cvae_traindata.feat_scaler, self.cvae_traindata.output_scaler, datatype=dataset.datatype, dataset_radius=dataset.conf_radius)
-        
+
             loader = DataLoader(predict_data, batch_size=total_batch_size, shuffle=False, num_workers=4, pin_memory=True)
             latents = self.cvae_trainer.predict(self.cvae_model, loader)
             latents = torch.cat([o[latent_idx] for o in latents]).view(predict_data.treatments.shape[0], -1).cpu().numpy()
-            
+
             if np.isnan(latents).any():
                 return 100000
-        
+
             new_dataset = deepcopy(dataset)
             B = predict_data.treatments.shape[0]
             if self.cvae_radius != 0:
                 B, H, W, C = predict_data.treatments.shape
-                flat = predict_data.treatments.view(B, -1, C)              # [B, (2r+1)^2, 1]
+                flat = predict_data.treatments.view(B, -1, C)
                 center_idx = (H * W) // 2
                 flat_wo_center = torch.cat(
                     [flat[:, :center_idx], flat[:, center_idx+1:]], dim=1
-                )  # [B, (2r+1)^2 - 1, 1]
-
-                flat_wo_center = flat_wo_center.squeeze(-1).cpu().numpy()            
+                ).squeeze(-1).cpu().numpy()
 
                 new_dataset.covariates = np.concatenate([new_dataset.covariates, flat_wo_center, latents], axis=1)
             else:
@@ -1319,8 +1466,6 @@ class Deconfounder(SpaceAlgo):
                     return m
             if self.head == "s2sls-lag1":
                 return self.val_treatment_loss
-                # preds = self.head_model.predict(new_dataset).flatten()
-                # return np.mean((dataset.outcome - preds) ** 2)
                 
                 
     

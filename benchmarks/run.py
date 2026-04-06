@@ -186,11 +186,16 @@ def main(cfg: DictConfig) -> None:
             if hasattr(method, "cur_val_p_value"):
                 eval_results["p_value"] = method.cur_val_p_value
 
-            # Arctic counterfactual: % SIC increase from 5% LWDN reduction
+            # Arctic counterfactual: % SIC change from 5% LWDN reduction
             if "cf_annual_pct" in effects:
                 eval_results["cf_annual_pct"] = effects["cf_annual_pct"]
             if "cf_summer_pct" in effects:
                 eval_results["cf_summer_pct"] = effects["cf_summer_pct"]
+            # Arctic counterfactual: % SIC change from +18 W/m² LWDN increase
+            if "cf_plus18_annual_pct" in effects:
+                eval_results["cf_plus18_annual_pct"] = effects["cf_plus18_annual_pct"]
+            if "cf_plus18_summer_pct" in effects:
+                eval_results["cf_plus18_summer_pct"] = effects["cf_plus18_summer_pct"]
 
             LOGGER.info(f"eval results: {eval_results}")
 
