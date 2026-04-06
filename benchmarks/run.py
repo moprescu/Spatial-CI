@@ -171,7 +171,7 @@ def main(cfg: DictConfig) -> None:
             evaluator = sci.DatasetEvaluator(full_dataset)
             eval_keys = {"ate", "att", "atc", "ite", "erf", "spill"}
             eval_results = evaluator.eval(**{k: v for k, v in effects.items() if k in eval_keys})
-            eval_results = {k: eval_results.get(k, None) for k in ("ate", "erf", "ite", "spill")}
+            eval_results = {k: float(eval_results[k]) if eval_results.get(k) is not None else None for k in ("ate", "erf", "ite", "spill")}
             eval_results["env"] = env_name
             eval_results["dataset_id"] = i
             eval_results["algo"] = cfg.algo.name

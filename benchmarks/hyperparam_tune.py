@@ -80,7 +80,7 @@ def main(cfg: DictConfig) -> None:
                 seed_everything(seed)
     
                 method = hydra.utils.instantiate(cfg.algo.method, **config)
-                method.fit(train_dataset)
+                method.fit(train_dataset, tune=True)
                 tune_metric = method.tune_metric(test_dataset)
                 num_trials = 0
 
@@ -95,7 +95,7 @@ def main(cfg: DictConfig) -> None:
                         tmp_train_dataset = train_dataset
                         tmp_test_dataset = test_dataset
                     method = hydra.utils.instantiate(cfg.algo.method, **config)
-                    method.fit(tmp_train_dataset)
+                    method.fit(tmp_train_dataset, tune=True)
                     tune_metric = method.tune_metric(tmp_test_dataset)
                     num_trials = num_trials + 1
 

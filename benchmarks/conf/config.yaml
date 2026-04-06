@@ -47,11 +47,15 @@ tune_map:
   deconfounder_r1_unet_tune: 50
   deconfounder_r2_unet_tune: 50
   deconfounder_r3_unet_tune: 50
+  deconfounder_r4_unet_tune: 50
+  deconfounder_r5_unet_tune: 50
   
   deconfounder_r0_spatialplus_tune: 150
   deconfounder_r1_spatialplus_tune: 150
   deconfounder_r2_spatialplus_tune: 150
   deconfounder_r3_spatialplus_tune: 150
+  deconfounder_r4_spatialplus_tune: 150
+  deconfounder_r5_spatialplus_tune: 150
 
 hydra:
   run:

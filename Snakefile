@@ -16,7 +16,7 @@ if len(config) == 0:
 # make target files
 targets = []
 for t_type in ("disc", "cont"):
-    envs = config["spaceenvs"][t_type]
+    envs = config["spaceenvs"][t_type] or []
     algos = config["algorithms"].get(t_type) or []
     for env in envs:
         for algo in algos:

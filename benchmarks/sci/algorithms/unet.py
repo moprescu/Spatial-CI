@@ -190,9 +190,9 @@ class UNetDataset(Dataset):
                 for j in range(-radius, radius + 1):
                     cur_coords = (center_coords[0] + i, center_coords[1] + j)
                     if change == "center" and (i, j) == (0, 0):
-                        self.treatments[ii, i + radius, j + radius, 0] = a_scaled
+                        self.treatments[ii, i + radius, j + radius, 0] = float(a_scaled)
                     elif change == "nbr" and (i, j) != (0, 0):
-                        self.treatments[ii, i + radius, j + radius, 0] = a_scaled
+                        self.treatments[ii, i + radius, j + radius, 0] = float(a_scaled)
                     else:
                         self.treatments[ii, i + radius, j + radius, 0] = true_treatment[coords2id[cur_coords]]
                     

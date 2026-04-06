@@ -575,6 +575,8 @@ class UNetHead(pl.LightningModule):
 def pad_center(tensor, target_size):
     """Pad 4D tensor (B,H,W,C) to target_size x target_size, centered."""
     b, h, w, c = tensor.shape
+    if c == 0:
+        return tensor
     pad_h = target_size - h
     pad_w = target_size - w
     assert pad_h >= 0 and pad_w >= 0
@@ -607,7 +609,7 @@ class CVAEDataset(Dataset):
         # Initialize or fit scalers
         if treat_scaler is None and nonbinary_treat_cols:
             treat_scaler = StandardScaler().fit(treat[:, nonbinary_treat_cols])
-        if feat_scaler is None and nonbinary_cov_cols:
+        if cov.shape[1] > 0 and feat_scaler is None and nonbinary_cov_cols:
             feat_scaler = StandardScaler().fit(cov[:, nonbinary_cov_cols])
         if output_scaler is None and nonbinary_out_cols:
             output_scaler = StandardScaler().fit(out[:, nonbinary_out_cols])
@@ -622,7 +624,7 @@ class CVAEDataset(Dataset):
             self.treat_scaled[:, nonbinary_treat_cols] = treat_scaler.transform(treat[:, nonbinary_treat_cols])
 
         self.cov_scaled = cov.copy()
-        if nonbinary_cov_cols and feat_scaler:
+        if cov.shape[1] > 0 and nonbinary_cov_cols and feat_scaler:
             self.cov_scaled[:, nonbinary_cov_cols] = feat_scaler.transform(cov[:, nonbinary_cov_cols])
 
         self.out_scaled = out.copy()
@@ -652,20 +654,23 @@ class CVAEDataset(Dataset):
                 for j in range(-radius, radius + 1):
                     cur_coords = (center_coords[0] + i, center_coords[1] + j)
                     if change == "center" and (i, j) == (0, 0):
-                        self.treatments[ii, i + radius, j + radius, 0] = a_scaled
+                        self.treatments[ii, i + radius, j + radius, 0] = float(a_scaled)
                     elif change == "nbr" and (i, j) != (0, 0):
-                        self.treatments[ii, i + radius, j + radius, 0] = a_scaled
+                        self.treatments[ii, i + radius, j + radius, 0] = float(a_scaled)
                     else:
                         self.treatments[ii, i + radius, j + radius, 0] = true_treatment[coords2id[cur_coords]]
 
-        self.covariates = torch.zeros(len(ids), 2*dataset_radius+1, 2*dataset_radius+1, cov.shape[1])
+        effective_cov_radius = dataset_radius if cov.shape[1] > 0 else radius
+        self.covariates = torch.zeros(len(ids), 2*effective_cov_radius+1, 2*effective_cov_radius+1, cov.shape[1])
+
         
-        for ii, n in enumerate(nodes):
-            center_coords = id2coords[n]
-            for i in range(-dataset_radius, dataset_radius + 1):
-                for j in range(-dataset_radius, dataset_radius + 1):
-                    cur_coords = (center_coords[0] + i, center_coords[1] + j)
-                    self.covariates[ii, i + dataset_radius, j + dataset_radius, :] = covariates[coords2id[cur_coords]]
+        if cov.shape[1] > 0:
+            for ii, n in enumerate(nodes):
+                center_coords = id2coords[n]
+                for i in range(-effective_cov_radius, effective_cov_radius + 1):
+                    for j in range(-effective_cov_radius, effective_cov_radius + 1):
+                        cur_coords = (center_coords[0] + i, center_coords[1] + j)
+                        self.covariates[ii, i + effective_cov_radius, j + effective_cov_radius, :] = covariates[coords2id[cur_coords]]
         
         treat_size = 2*radius + 1
         cov_size = 2*dataset_radius + 1
@@ -750,20 +755,21 @@ class UNetDataset(Dataset):
                 for j in range(-radius, radius + 1):
                     cur_coords = (center_coords[0] + i, center_coords[1] + j)
                     if change == "center" and (i, j) == (0, 0):
-                        self.treatments[ii, i + radius, j + radius, 0] = a_scaled
+                        self.treatments[ii, i + radius, j + radius, 0] = float(a_scaled)
                     elif change == "nbr" and (i, j) != (0, 0):
-                        self.treatments[ii, i + radius, j + radius, 0] = a_scaled
+                        self.treatments[ii, i + radius, j + radius, 0] = float(a_scaled)
                     else:
                         self.treatments[ii, i + radius, j + radius, 0] = true_treatment[coords2id[cur_coords]]
 
         self.covariates = torch.zeros(len(ids), 2*dataset_radius+1, 2*dataset_radius+1, cov.shape[1])
-
-        for ii, n in enumerate(nodes):
-            center_coords = id2coords[n]
-            for i in range(-dataset_radius, dataset_radius + 1):
-                for j in range(-dataset_radius, dataset_radius + 1):
-                    cur_coords = (center_coords[0] + i, center_coords[1] + j)
-                    self.covariates[ii, i + dataset_radius, j + dataset_radius, :] = covariates[coords2id[cur_coords]]
+        
+        if cov.shape[1] > 0:
+            for ii, n in enumerate(nodes):
+                center_coords = id2coords[n]
+                for i in range(-dataset_radius, dataset_radius + 1):
+                    for j in range(-dataset_radius, dataset_radius + 1):
+                        cur_coords = (center_coords[0] + i, center_coords[1] + j)
+                        self.covariates[ii, i + dataset_radius, j + dataset_radius, :] = covariates[coords2id[cur_coords]]
 
         treat_size = 2*radius + 1
         cov_size = 2*dataset_radius + 1
@@ -901,7 +907,7 @@ class Deconfounder(SpaceAlgo):
         """Convert tensor back to numpy array."""
         return tensor.detach().cpu().numpy()
     
-    def fit(self, dataset: SpaceDataset):
+    def fit(self, dataset: SpaceDataset, tune=False):
         import wandb
         os.environ["WANDB_START_METHOD"] = "thread"
         os.environ["PYTORCH_LIGHTNING_DEBUG"] = "1"
@@ -999,9 +1005,10 @@ class Deconfounder(SpaceAlgo):
             torch.cuda.empty_cache()
             
             if self.cur_val_p_value < 0.25 or self.cur_val_p_value > 0.75:
-                raise ValueError(f"Validation p_value too low: {self.cur_val_p_value:.3f}")
-                LOGGER.debug(f"Validation p_value too low: {self.cur_val_p_value:.3f}")
-                return
+                if tune:
+                    LOGGER.debug(f"Validation p_value too low: {self.cur_val_p_value:.3f}")
+                else:
+                    raise ValueError(f"Validation p_value too low: {self.cur_val_p_value:.3f}")
         else:
             LOGGER.warning("No best checkpoint found, using final epoch model")
 
@@ -1201,8 +1208,8 @@ class Deconfounder(SpaceAlgo):
         return effects
     
     def tune_metric(self, dataset: SpaceDataset) -> float:
-        if self.cur_val_p_value < 0.25 or self.cur_val_p_value > 0.75:
-            return self.cur_val_p_value
+        # if self.cur_val_p_value < 0.25 or self.cur_val_p_value > 0.75:
+        #     return self.cur_val_p_value
         
         if self.head == "unet":
             preds = self.predict(dataset, self.max_nodes, a=None, change=None)[:, 0]

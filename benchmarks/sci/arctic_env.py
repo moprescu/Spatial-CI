@@ -31,12 +31,14 @@ import tempfile
 import networkx as nx
 import numpy as np
 import pandas as pd
+import tarfile
+import io
 
 from sci.env import SpaceDataset
 from spacebench.log import LOGGER
 
 GOOGLE_DRIVE_FILE_ID = "1lAg393qAWkpXthfAp3v1YohP4B0zNh1h"
-NPY_FILENAME = "Arctic_Netflux_LW_SIC_causality_25km_monthly_1979_2021.npy"
+TARGZ_FILENAME = "Arctic_Netflux_LW_SIC_causality_25km_monthly_1979_2021.tar.gz"
 
 # Number of discrete treatment levels for ERF evaluation
 N_TREATMENT_LEVELS = 10
@@ -84,13 +86,19 @@ class ArcticEnv:
         start_month = 1
 
         # ----- download --------------------------------------------------
-        data_path = os.path.join(self.dir, NPY_FILENAME)
+        data_path = os.path.join(self.dir, TARGZ_FILENAME)
         if not os.path.exists(data_path):
             os.makedirs(self.dir, exist_ok=True)
             LOGGER.info("Downloading Arctic dataset from Google Drive...")
             _download_from_gdrive(GOOGLE_DRIVE_FILE_ID, data_path)
+        
+        np_path = os.path.join(self.dir, TARGZ_FILENAME.replace(".tar.gz", ".npy"))
+        if not os.path.exists(np_path):
+            LOGGER.info("Extracting dataset...")
+            with tarfile.open(data_path, 'r:gz') as tar:
+                tar.extractall(self.dir)
 
-        data = np.load(data_path)
+        data = np.load(np_path)
 
         # ----- split channels (same order as code_snippet.py) ------------
         conf_raw = data[..., 0].astype(np.float32)  # HFX  (confounder)
