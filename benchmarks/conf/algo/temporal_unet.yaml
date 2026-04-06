@@ -1,0 +1,19 @@
+needs_train_test_split: false
+use_interference: false
+
+method:
+  _target_: sci.algorithms.unet.TemporalU_Net
+  base_channels: 32
+  n_downs: 3
+  bilinear: true
+  lr: 1e-3
+  epochs: 50
+  batch_size: 8
+
+
+tune:
+  param_space:
+    base_channels:
+      _target_: ray.tune.choice
+      _args_:
+        - [16, 32, 64]

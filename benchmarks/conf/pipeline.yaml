@@ -40,11 +40,13 @@ algorithms:
     # - s2sls-lag2
     # - gmerror
     # - deconfounder
-    - unet
-    - deconfounder_r2_unet_2
+    # - unet
+    # - deconfounder_r2_unet_2
     # - deconfounder_r2_unet_4
     # - deconfounder_r2_unet_8
     # - deconfounder_r2_unet_16
+    - temporal_unet
+    - deconfounder_r1_temporal_unet_2
   disc:
     # - dapsm
     # - spatial
