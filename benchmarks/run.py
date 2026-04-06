@@ -78,28 +78,32 @@ def main(cfg: DictConfig) -> None:
             param_space = dict(hydra.utils.instantiate(cfg.algo.tune.param_space))
             if len(param_space) > 0:
 
-                def objective(config):                    
+                def objective(config, _train_ref=None, _test_ref=None, _full_ref=None):
+                    _train_dataset = ray.get(_train_ref)
+                    _test_dataset = ray.get(_test_ref)
+                    _full_dataset = ray.get(_full_ref)
+
                     seed_everything(gseed)
                     method = hydra.utils.instantiate(cfg.algo.method, **config)
-                    method.fit(train_dataset)
-                    tune_metric = method.tune_metric(test_dataset)
+                    method.fit(_train_dataset)
+                    tune_metric = method.tune_metric(_test_dataset)
                     num_trials = 0
-                    
+
                     while right_method and tune_metric > 100 and num_trials < MAX_TRIALS:
                         if cfg.algo.needs_train_test_split:
                             tmp_train_ix, tmp_test_ix, _ = spatial_train_test_split(
                                 env.graph, **{**cfg.spatial_train_test_split, "buffer": cfg.spatial_train_test_split["buffer"] + env.radius}
                             )
-                            tmp_train_dataset = full_dataset[tmp_train_ix]
-                            tmp_test_dataset = full_dataset[tmp_test_ix]
+                            tmp_train_dataset = _full_dataset[tmp_train_ix]
+                            tmp_test_dataset = _full_dataset[tmp_test_ix]
                         else:
-                            tmp_train_dataset = train_dataset
-                            tmp_test_dataset = test_dataset
+                            tmp_train_dataset = _train_dataset
+                            tmp_test_dataset = _test_dataset
                         method = hydra.utils.instantiate(cfg.algo.method, **config)
                         method.fit(tmp_train_dataset)
                         tune_metric = method.tune_metric(tmp_test_dataset)
                         num_trials = num_trials + 1
-                        
+
                         del method
                         gc.collect()
                         torch.cuda.empty_cache()
@@ -107,8 +111,6 @@ def main(cfg: DictConfig) -> None:
                         torch.cuda.ipc_collect()
 
                     return tune_metric
-
-                objective = tune.with_resources(objective, dict(cfg.algo.tune.resources))
 
                 # create tuner
                 LOGGER.info("...setting up hyperparameter tuning")
@@ -122,8 +124,18 @@ def main(cfg: DictConfig) -> None:
                     include_dashboard=False,
                     # num_cpus=cfg.concurrency,
                 )
+                # Put large datasets in Ray object store to avoid
+                # serializing them into every worker closure.
+                train_ref = ray.put(train_dataset)
+                test_ref = ray.put(test_dataset)
+                full_ref = ray.put(full_dataset)
+
+                from functools import partial
+                objective_with_data = partial(objective, _train_ref=train_ref, _test_ref=test_ref, _full_ref=full_ref)
+                objective_with_data = tune.with_resources(objective_with_data, dict(cfg.algo.tune.resources))
+
                 tuner = tune.Tuner(
-                    objective,
+                    objective_with_data,
                     tune_config=tune_config,
                     param_space=param_space,
                     run_config=run_config,

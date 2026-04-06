@@ -6,6 +6,7 @@ method:
   base_channels: 32
   n_downs: 3
   bilinear: true
+  weight_decay: 1e-4
   lr: 1e-3
   epochs: 50
   batch_size: 8
@@ -16,4 +17,14 @@ tune:
     base_channels:
       _target_: ray.tune.choice
       _args_:
-        - [16, 32, 64]
+        - [16, 32]
+    lr:
+      _target_: ray.tune.loguniform
+      _args_: [1e-4, 1e-2]
+    weight_decay:
+      _target_: ray.tune.loguniform
+      _args_: [1e-5, 1e-3]
+    n_downs:
+      _target_: ray.tune.choice
+      _args_:
+        - [2, 3]
