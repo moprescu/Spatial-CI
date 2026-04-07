@@ -2,6 +2,7 @@
 import itertools
 import json
 import os
+import re
 import zipfile
 from dataclasses import dataclass
 from glob import glob
@@ -344,15 +345,21 @@ class SpaceEnv:
         self.outcome = data["Y_synth"].values
 
         # -- 3. counterfactuals (Ycf) --
+        # Match exactly `Y_synth_<digits>`; exclude variants like
+        # `Y_synth_<NN>_<dr>_<dc>` saved by some DGP variants.
         cfcols = sorted(
-            data.columns[data.columns.str.startswith("Y_synth_")],
+            [c for c in data.columns if re.fullmatch(r"Y_synth_\d+", c)],
             key=lambda x: int(x.split("_")[-1]),
         )
         self.counterfactuals = data[cfcols].values
         
         # -- 3.5. spill counterfactuals (spill_Ycf) --
+        # Match exactly `spill_Y_synth_<digits>`; exclude per-neighbor
+        # variants like `spill_Y_synth_<NN>_<dr>_<dc>` that some DGP
+        # variants additionally save.
         spill_cfcols = sorted(
-            data.columns[data.columns.str.startswith("spill_Y_synth_")],
+            [c for c in data.columns
+             if re.fullmatch(r"spill_Y_synth_\d+", c)],
             key=lambda x: int(x.split("_")[-1]),
         )
         self.spill_counterfactuals = data[spill_cfcols].values
