@@ -25,6 +25,24 @@ cd space-data
 snakemake -s Snakefile_singlecause -j --configfile conf/pipeline.yaml
 ```
 
+To generate the data with **asymmetric DGP neighborhoods** (Exp 1 — DGP only
+includes neighbors with `dc >= 0`, simulating directional interference such
+as wind/advection; downstream models still use default symmetric
+neighborhoods), run:
+```
+cd space-data
+snakemake -s Snakefile_asym -j --configfile conf/pipeline.yaml
+```
+
+To generate the data with **confounder-modulated spillover** (Exp 2 — adds
+`α · U_s · Ā_Ns` to the outcome before fitting, where `U_s = q_summer`
+and `Ā_Ns` is mean neighbor treatment; `α` calibrated so the added term
+has std ≈ 0.5 · std(Y)), run:
+```
+cd space-data
+snakemake -s Snakefile_confmod -j --configfile conf/pipeline.yaml
+```
+
 ## Run Benchmarks
 
 Change files in `benchmarks/conf/` to change resources, algorithms, datasets, hyperparams, etc.. The outputs are `jsonl` fles. To run the `pipeline.yaml` file, run:
