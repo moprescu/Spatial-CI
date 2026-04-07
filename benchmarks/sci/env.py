@@ -453,6 +453,8 @@ class SpaceEnv:
         
         if "singlecause" in self.metadata["base_name"]:
             self.topfeat = ["single_cause"]
+        if "asym" or "confmod" in self.metadata["base_name"]:
+            self.topfeat = ["gmet_mean_summer_sph"]
         
         # self.topfeat = list(self.confounding_score["erf"].keys())
         self.radius = int(self.metadata["radius"])
