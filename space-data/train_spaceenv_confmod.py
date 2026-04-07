@@ -1634,7 +1634,7 @@ def main(cfg: DictConfig):
         # std ≈ 0.5 · std(Y).
         logging.info("EXP 2: Adding confounder-modulated spillover term to outcome before fit...")
 
-        U_col_exp2 = "q_summer"
+        U_col_exp2 = "gmet_mean_summer_sph"
         if U_col_exp2 not in df_grid.columns:
             raise ValueError(
                 f"EXP 2 requires covariate '{U_col_exp2}' in df_grid; not found."
