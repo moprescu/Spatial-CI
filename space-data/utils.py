@@ -1181,7 +1181,8 @@ def feature_importance(
 
 def create_grid_features_compact(dftrain, radius=2, fill_missing='mean', a=None, change=None, treatment=None,
                                  is_binary_treatment=None, spaceenv=None, get_t_pct=None, spline_basis=None,
-                                 extra_colnames=None, covariates=None, nbr_idx=None):
+                                 extra_colnames=None, covariates=None, nbr_idx=None,
+                                 asym_treatment=False):
     """
     Efficiently create grid neighborhoods for each point as 2D arrays (grids),
     storing them in a new column per feature. Also creates individual columns
@@ -1375,6 +1376,18 @@ def create_grid_features_compact(dftrain, radius=2, fill_missing='mean', a=None,
                     nbr_dr, nbr_dc = nbr_positions[nbr_idx - 1]
                     neighborhood[center_r + nbr_dr, center_c + nbr_dc] = extra_value
 
+            # ASYM mask: for the treatment column only, blank out cells with
+            # dc < 0 so the image patch (and tabular cells) only carries the
+            # eastward + same-column treatment values.
+            if asym_treatment and treatment is not None and col == treatment:
+                fill_val = fill_values.get(col, 0.0)
+                if pd.isna(fill_val):
+                    fill_val = 0.0
+                for dr in range(-radius, radius + 1):
+                    for dc in range(-radius, radius + 1):
+                        if dc < 0:
+                            neighborhood[dr + radius, dc + radius] = fill_val
+
             # Store cell values (with treatment changes applied)
             for dr in range(-radius, radius + 1):
                 for dc in range(-radius, radius + 1):
@@ -1391,6 +1404,9 @@ def create_grid_features_compact(dftrain, radius=2, fill_missing='mean', a=None,
 
         # Apply treatment changes to result_df individual cell columns if needed
         if treatment is not None and col == treatment:
+            fill_val_treat = fill_values.get(col, 0.0)
+            if pd.isna(fill_val_treat):
+                fill_val_treat = 0.0
             for cell_col_name in cell_data.keys():
                 # Parse the relative position from column name
                 # Format: "{col}_{dr}_{dc}"
@@ -1401,12 +1417,19 @@ def create_grid_features_compact(dftrain, radius=2, fill_missing='mean', a=None,
                     # Change center cell values to a
                     cell_data[cell_col_name] = [a] * len(cell_data[cell_col_name])
                 elif change == "nbr" and (dr != 0 or dc != 0):
-                    # Change neighbor cell values to a
-                    cell_data[cell_col_name] = [a] * len(cell_data[cell_col_name])
+                    # ASYM: only flip eastward (dc >= 0) neighbors when masking
+                    if asym_treatment and dc < 0:
+                        pass  # leave masked-to-fill from per-point loop
+                    else:
+                        cell_data[cell_col_name] = [a] * len(cell_data[cell_col_name])
                 elif change == "nbr_k" and nbr_idx is not None:
                     nbr_dr, nbr_dc = nbr_positions[nbr_idx - 1]
                     if dr == nbr_dr and dc == nbr_dc:
                         cell_data[cell_col_name] = [a] * len(cell_data[cell_col_name])
+
+                # ASYM: enforce mask on dc < 0 cells regardless of change
+                if asym_treatment and dc < 0:
+                    cell_data[cell_col_name] = [fill_val_treat] * len(cell_data[cell_col_name])
                     
 
         # Apply extra column changes to result_df individual cell columns if needed

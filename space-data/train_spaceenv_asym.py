@@ -1623,7 +1623,7 @@ def main(cfg: DictConfig):
         
     elif datatype == "grid":
         logging.info(f"Creating grids for each feature")
-        df_grid, temp_dir = utils.create_grid_features_compact(df, radius=radius)
+        df_grid, temp_dir = utils.create_grid_features_compact(df, radius=radius, treatment=spaceenv.treatment, asym_treatment=True)
 
         # ====== EXP 1: ASYMMETRIC DGP NEIGHBORHOODS ======
         # Only include neighbors with dc >= 0 (eastward + same column).
@@ -1765,7 +1765,8 @@ def main(cfg: DictConfig):
                                                                        get_t_pct=get_t_pct,
                                                                        spline_basis=spline_basis,
                                                                        extra_colnames=extra_colnames,
-                                                                       covariates=covariates)
+                                                                       covariates=covariates,
+                                                                       asym_treatment=True)
             predicted = predictor.predict(cfdata_grid)
             mu_cf.append(predicted)
         mu_cf = pd.concat(mu_cf, axis=1)
@@ -1788,7 +1789,8 @@ def main(cfg: DictConfig):
                                                                        get_t_pct=get_t_pct,
                                                                        spline_basis=spline_basis,
                                                                        extra_colnames=extra_colnames,
-                                                                       covariates=covariates)
+                                                                       covariates=covariates,
+                                                                       asym_treatment=True)
             predicted = predictor.predict(cfdata_grid)
             spill_mu_cf.append(predicted)
         spill_mu_cf = pd.concat(spill_mu_cf, axis=1)
@@ -1820,7 +1822,8 @@ def main(cfg: DictConfig):
                                                                            get_t_pct=get_t_pct,
                                                                            spline_basis=spline_basis,
                                                                            extra_colnames=extra_colnames,
-                                                                           covariates=covariates)
+                                                                           covariates=covariates,
+                                                                           asym_treatment=True)
                 predicted = predictor.predict(cfdata_grid)
                 spill_one_mu_cf.append(predicted)
             spill_one_mu_cf = pd.concat(spill_one_mu_cf, axis=1)
