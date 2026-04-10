@@ -369,23 +369,42 @@ class SpaceEnv:
                 if m:
                     i, dr, dc = int(m.group(1)), int(m.group(2)), int(m.group(3))
                     per_nbr.setdefault((dr, dc), {})[i] = c
-            if per_nbr:
-                # For each neighbor offset, build (N, n_treatment_values) array
-                nbr_arrays = {}
-                for key, idx_map in per_nbr.items():
-                    cols = [idx_map[i] for i in sorted(idx_map)]
-                    nbr_arrays[key] = data[cols].values  # (N, n_tv)
-                # Average across neighbor positions: per-pixel mean
-                stacked = np.stack(list(nbr_arrays.values()), axis=0)  # (n_nbr, N, n_tv)
-                self.spill_counterfactuals = stacked.mean(axis=0)  # (N, n_tv)
-            else:
-                # Fallback: no per-neighbor columns found, use joint columns
-                spill_cfcols = sorted(
-                    [c for c in data.columns
-                     if re.fullmatch(r"spill_Y_synth_\d+", c)],
-                    key=lambda x: int(x.split("_")[-1]),
+            if not per_nbr:
+                raise ValueError(
+                    "PER_NEIGHBOR_SPILLOVER is enabled but no per-neighbor "
+                    "spillover columns found (expected pattern: "
+                    "spill_Y_synth_<idx>_<dr>_<dc>)."
                 )
-                self.spill_counterfactuals = data[spill_cfcols].values
+            # Validate completeness: all neighbor offsets and treatment indices.
+            radius = int(self.metadata["radius"])
+            expected_offsets = {
+                (dr, dc)
+                for dr in range(-radius, radius + 1)
+                for dc in range(-radius, radius + 1)
+                if not (dr == 0 and dc == 0)
+            }
+            expected_trt = set(range(len(cfcols)))
+            missing_offsets = expected_offsets - per_nbr.keys()
+            if missing_offsets:
+                raise ValueError(
+                    f"Per-neighbor spillover is missing neighbor offsets: "
+                    f"{sorted(missing_offsets)}"
+                )
+            for key, idx_map in per_nbr.items():
+                missing_trt = expected_trt - set(idx_map.keys())
+                if missing_trt:
+                    raise ValueError(
+                        f"Per-neighbor spillover offset {key} is missing "
+                        f"treatment indices: {sorted(missing_trt)}"
+                    )
+            # For each neighbor offset, build (N, n_treatment_values) array
+            nbr_arrays = {}
+            for key, idx_map in per_nbr.items():
+                cols = [idx_map[i] for i in sorted(idx_map)]
+                nbr_arrays[key] = data[cols].values  # (N, n_tv)
+            # Average across neighbor positions: per-pixel mean
+            stacked = np.stack(list(nbr_arrays.values()), axis=0)  # (n_nbr, N, n_tv)
+            self.spill_counterfactuals = stacked.mean(axis=0)  # (N, n_tv)
         else:
             # Original: match exactly `spill_Y_synth_<digits>`;
             # exclude per-neighbor variants.
