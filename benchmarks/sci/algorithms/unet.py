@@ -130,7 +130,7 @@ def pad_center(tensor, target_size):
 
 
 class UNetDataset(Dataset):
-    def __init__(self, dataset, nodes, coords2id, radius, treat_scaler=None, feat_scaler=None, output_scaler=None, a=None, change=None, datatype="grid", dataset_radius=None):
+    def __init__(self, dataset, nodes, coords2id, radius, treat_scaler=None, feat_scaler=None, output_scaler=None, a=None, change=None, datatype="grid", dataset_radius=None, nbr_off=None):
         
         if datatype != "grid":
             raise ValueError(f"Unsupported dataset type: {datatype}")
@@ -193,9 +193,11 @@ class UNetDataset(Dataset):
                         self.treatments[ii, i + radius, j + radius, 0] = float(a_scaled)
                     elif change == "nbr" and (i, j) != (0, 0):
                         self.treatments[ii, i + radius, j + radius, 0] = float(a_scaled)
+                    elif change == "nbr_one" and nbr_off is not None and (i, j) == tuple(nbr_off):
+                        self.treatments[ii, i + radius, j + radius, 0] = float(a_scaled)
                     else:
                         self.treatments[ii, i + radius, j + radius, 0] = true_treatment[coords2id[cur_coords]]
-                    
+
         self.covariates = torch.zeros(len(ids), 2*dataset_radius+1, 2*dataset_radius+1, cov.shape[1])
         
         for ii, n in enumerate(nodes):
@@ -394,14 +396,41 @@ class U_Net(SpaceAlgo):
         if dataset.has_binary_treatment():
             effects["ate"] = effects["erf"][1] - effects["erf"][0]
 
-            spill = []
-            for a in dataset.treatment_values:
-                preds_a = self.predict(dataset, self.max_nodes, a=a, change="nbr")
-                spill.append(preds_a)
-            spill = np.concatenate(spill, axis=1)
-
-            s = spill.mean(0)
-            effects["spill"] = s[1] - s[0]
+            from sci.env import PER_NEIGHBOR_SPILLOVER
+            if PER_NEIGHBOR_SPILLOVER:
+                model_radius = dataset.conf_radius
+                nbr_positions = [
+                    (dr, dc)
+                    for dr in range(-model_radius, model_radius + 1)
+                    for dc in range(-model_radius, model_radius + 1)
+                    if not (dr == 0 and dc == 0)
+                ]
+                LOGGER.debug(
+                    f"Per-nbr spillover: averaging over {len(nbr_positions)} "
+                    f"model neighbor positions"
+                )
+                per_nbr_effects = []
+                for (dr, dc) in nbr_positions:
+                    preds_0 = self.predict(
+                        dataset, self.max_nodes,
+                        a=dataset.treatment_values[0],
+                        change="nbr_one", nbr_off=(dr, dc),
+                    )[:, 0]
+                    preds_1 = self.predict(
+                        dataset, self.max_nodes,
+                        a=dataset.treatment_values[1],
+                        change="nbr_one", nbr_off=(dr, dc),
+                    )[:, 0]
+                    per_nbr_effects.append(preds_1 - preds_0)
+                effects["spill"] = float(np.mean(per_nbr_effects))
+            else:
+                spill = []
+                for a in dataset.treatment_values:
+                    preds_a = self.predict(dataset, self.max_nodes, a=a, change="nbr")
+                    spill.append(preds_a)
+                spill = np.concatenate(spill, axis=1)
+                s = spill.mean(0)
+                effects["spill"] = s[1] - s[0]
 
         # Per-pixel counterfactual: annual and summer % increase in SIC
         # from a 5 % LWDN reduction.
@@ -443,7 +472,7 @@ class U_Net(SpaceAlgo):
     
     
     def predict(self, dataset: SpaceDataset, nodes, a, change,
-                cf_full_treatment=None) -> dict:
+                cf_full_treatment=None, nbr_off=None) -> dict:
         """
         Get outcome predictions with GPU acceleration for large datasets.
 
@@ -461,7 +490,7 @@ class U_Net(SpaceAlgo):
         else:
             head_dataset = dataset
             head_a, head_change = a, change
-        predict_head_data = UNetDataset(head_dataset, nodes, self.max_coords2id, dataset.conf_radius, self.head_traindata.treat_scaler, self.head_traindata.feat_scaler, self.head_traindata.output_scaler, a=head_a, change=head_change, datatype=dataset.datatype, dataset_radius=dataset.conf_radius)
+        predict_head_data = UNetDataset(head_dataset, nodes, self.max_coords2id, dataset.conf_radius, self.head_traindata.treat_scaler, self.head_traindata.feat_scaler, self.head_traindata.output_scaler, a=head_a, change=head_change, datatype=dataset.datatype, dataset_radius=dataset.conf_radius, nbr_off=nbr_off)
         loader = DataLoader(predict_head_data, batch_size=total_batch_size, shuffle=False, num_workers=4, pin_memory=True)
         preds = torch.cat(self.head_trainer.predict(self.head_model, loader))
         preds = preds.cpu().numpy()

@@ -8,6 +8,32 @@ from sci.env import SpaceDataset
 from spacebench.log import LOGGER
 from sci.algorithms.datautils import spatial_train_test_split
 
+# When True, use safe standardization that leaves binary 0/1 columns
+# unscaled and replaces zero/near-zero std with 1 (constant columns).
+# When False, use the original plain mean(0)/std(0) standardization.
+SAFE_STANDARDIZE = True
+
+
+def safe_standardize_stats(x: torch.Tensor) -> tuple[torch.Tensor, torch.Tensor]:
+    """Compute (mu, std) for column-wise standardization that:
+        - leaves binary 0/1 columns as raw (mu=0, std=1)
+        - replaces zero/near-zero std with 1 (constant columns)
+    Returns tensors with same dtype/device as ``x``.
+    """
+    if x.dim() == 1:
+        x_2d = x.unsqueeze(1)
+    else:
+        x_2d = x
+    mu = x_2d.mean(0)
+    std = x_2d.std(0)
+    is_binary = ((x_2d == 0) | (x_2d == 1)).all(dim=0)
+    mu = torch.where(is_binary, torch.zeros_like(mu), mu)
+    std = torch.where(is_binary, torch.ones_like(std), std)
+    std = torch.where(std < 1e-8, torch.ones_like(std), std)
+    if x.dim() == 1:
+        return mu.squeeze(0), std.squeeze(0)
+    return mu, std
+
 
 def compute_phi(c1: torch.Tensor, c2: torch.Tensor) -> torch.Tensor:
     """
@@ -242,9 +268,15 @@ class Spatial(SpaceAlgo):
         self.cp_coords = coords[self.cp_idx]
 
         # standardize
-        self.coords_mu, self.coords_std = coords.mean(0), coords.std(0)
-        self.inputs_mu, self.inputs_std = inputs.mean(0), inputs.std(0)
+        if SAFE_STANDARDIZE:
+            self.coords_mu, self.coords_std = safe_standardize_stats(coords)
+            self.inputs_mu, self.inputs_std = safe_standardize_stats(inputs)
+        else:
+            self.coords_mu, self.coords_std = coords.mean(0), coords.std(0)
+            self.inputs_mu, self.inputs_std = inputs.mean(0), inputs.std(0)
         self.y_mu, self.y_std = y.mean(), y.std()
+        if SAFE_STANDARDIZE and self.y_std < 1e-8:
+            self.y_std = torch.ones_like(self.y_std)
         coords = (coords - self.coords_mu) / self.coords_std
         inputs = (inputs - self.inputs_mu) / self.inputs_std
         y = (y - self.y_mu) / self.y_std
@@ -377,8 +409,12 @@ class SpatialPlus(SpaceAlgo):
         self.cp_coords = coords[self.cp_idx]
 
         # standardize
-        self.coords_mu, self.coords_std = coords.mean(0), coords.std(0)
-        self.covars_mu, self.covars_std = covars.mean(0), covars.std(0)
+        if SAFE_STANDARDIZE:
+            self.coords_mu, self.coords_std = safe_standardize_stats(coords)
+            self.covars_mu, self.covars_std = safe_standardize_stats(covars)
+        else:
+            self.coords_mu, self.coords_std = coords.mean(0), coords.std(0)
+            self.covars_mu, self.covars_std = covars.mean(0), covars.std(0)
         coords = (coords - self.coords_mu) / self.coords_std
         covars = (covars - self.covars_mu) / self.covars_std
 
@@ -405,11 +441,16 @@ class SpatialPlus(SpaceAlgo):
 
         # fit a model for the outcome
         self.y_mu, self.y_std = y.mean(), y.std()
+        if SAFE_STANDARDIZE and self.y_std < 1e-8:
+            self.y_std = torch.ones_like(self.y_std)
         y = (y - self.y_mu) / self.y_std
         inputs = torch.cat(
             [t_resid[:, None], torch.FloatTensor(dataset.covariates).to(self.device)], dim=1
         )
-        self.inputs_mu, self.inputs_std = inputs.mean(0), inputs.std(0)
+        if SAFE_STANDARDIZE:
+            self.inputs_mu, self.inputs_std = safe_standardize_stats(inputs)
+        else:
+            self.inputs_mu, self.inputs_std = inputs.mean(0), inputs.std(0)
         inputs = (inputs - self.inputs_mu) / self.inputs_std
         self.y_params = tps_opt(
             y,

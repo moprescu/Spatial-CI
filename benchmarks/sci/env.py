@@ -19,6 +19,11 @@ from sci.dataverse import DataverseAPI
 from sci.datamaster import DataMaster
 from spacebench.log import LOGGER
 
+# When True, spillover is estimated per-neighbor (flip ONE neighbor at a time,
+# then average across neighbor positions).  When False, use the original
+# approach (set ALL neighbors to each treatment value simultaneously).
+PER_NEIGHBOR_SPILLOVER = True
+
 
 @dataclass
 class SpaceDataset:
@@ -354,15 +359,42 @@ class SpaceEnv:
         self.counterfactuals = data[cfcols].values
         
         # -- 3.5. spill counterfactuals (spill_Ycf) --
-        # Match exactly `spill_Y_synth_<digits>`; exclude per-neighbor
-        # variants like `spill_Y_synth_<NN>_<dr>_<dc>` that some DGP
-        # variants additionally save.
-        spill_cfcols = sorted(
-            [c for c in data.columns
-             if re.fullmatch(r"spill_Y_synth_\d+", c)],
-            key=lambda x: int(x.split("_")[-1]),
-        )
-        self.spill_counterfactuals = data[spill_cfcols].values
+        if PER_NEIGHBOR_SPILLOVER:
+            # Per-neighbor spillover: load columns like
+            # spill_Y_synth_<treatment_idx>_<dr>_<dc> and average
+            # across neighbor positions to get per-pixel truth.
+            per_nbr = {}  # {(dr,dc): {treatment_idx: column_name}}
+            for c in data.columns:
+                m = re.fullmatch(r"spill_Y_synth_(\d+)_(-?\d+)_(-?\d+)", c)
+                if m:
+                    i, dr, dc = int(m.group(1)), int(m.group(2)), int(m.group(3))
+                    per_nbr.setdefault((dr, dc), {})[i] = c
+            if per_nbr:
+                # For each neighbor offset, build (N, n_treatment_values) array
+                nbr_arrays = {}
+                for key, idx_map in per_nbr.items():
+                    cols = [idx_map[i] for i in sorted(idx_map)]
+                    nbr_arrays[key] = data[cols].values  # (N, n_tv)
+                # Average across neighbor positions: per-pixel mean
+                stacked = np.stack(list(nbr_arrays.values()), axis=0)  # (n_nbr, N, n_tv)
+                self.spill_counterfactuals = stacked.mean(axis=0)  # (N, n_tv)
+            else:
+                # Fallback: no per-neighbor columns found, use joint columns
+                spill_cfcols = sorted(
+                    [c for c in data.columns
+                     if re.fullmatch(r"spill_Y_synth_\d+", c)],
+                    key=lambda x: int(x.split("_")[-1]),
+                )
+                self.spill_counterfactuals = data[spill_cfcols].values
+        else:
+            # Original: match exactly `spill_Y_synth_<digits>`;
+            # exclude per-neighbor variants.
+            spill_cfcols = sorted(
+                [c for c in data.columns
+                 if re.fullmatch(r"spill_Y_synth_\d+", c)],
+                key=lambda x: int(x.split("_")[-1]),
+            )
+            self.spill_counterfactuals = data[spill_cfcols].values
 
         # -- 4. treatment --
         self.treatment = data[self.metadata["treatment"]].values

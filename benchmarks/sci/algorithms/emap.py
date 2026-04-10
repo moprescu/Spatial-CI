@@ -47,6 +47,7 @@ class NeighborTreatmentDataset(Dataset):
         change=None,
         datatype="grid",
         dataset_radius=None,
+        nbr_off=None,
     ):
         if datatype != "grid":
             raise ValueError(f"Unsupported dataset type: {datatype}")
@@ -98,6 +99,8 @@ class NeighborTreatmentDataset(Dataset):
                     if change == "center" and (i, j) == (0, 0):
                         self.treatments[ii, i + radius, j + radius, 0] = a
                     elif change == "nbr" and (i, j) != (0, 0):
+                        self.treatments[ii, i + radius, j + radius, 0] = a
+                    elif change == "nbr_one" and nbr_off is not None and (i, j) == tuple(nbr_off):
                         self.treatments[ii, i + radius, j + radius, 0] = a
                     else:
                         self.treatments[ii, i + radius, j + radius, 0] = true_treatment[coords2id[cur_coords]]
@@ -198,7 +201,7 @@ class EMAP(SpaceAlgo):
         )                                                      # [B, H*W-1, 1]
         return flat_wo.mean(dim=1).cpu().numpy()               # [B, H*W-1]
 
-    def _build_augmented_dataset(self, dataset, nodes, a=None, change=None):
+    def _build_augmented_dataset(self, dataset, nodes, a=None, change=None, nbr_off=None):
         """
         Build NeighborTreatmentDataset for *nodes*, extract flat_wo_center,
         and return (new_dataset, flat_wo_center_array).
@@ -215,6 +218,7 @@ class EMAP(SpaceAlgo):
             change=change,
             datatype=dataset.datatype,
             dataset_radius=getattr(dataset, "conf_radius", self.cvae_radius),
+            nbr_off=nbr_off,
         )
 
         flat_wo = self._flat_wo_center(data)
@@ -283,13 +287,29 @@ class EMAP(SpaceAlgo):
         if dataset.has_binary_treatment():
             effects["ate"] = self.head_model.t_coef
 
-            spill = []
-            for a in dataset.treatment_values:
-                preds_a = self.predict(dataset, self.max_nodes, a=a, change="nbr")
-                spill.append(preds_a)
-            spill = np.concatenate(spill, axis=1)
-            s = spill.mean(0)
-            effects["spill"] = s[1] - s[0]
+            from sci.env import PER_NEIGHBOR_SPILLOVER
+            if PER_NEIGHBOR_SPILLOVER:
+                # Flip ONE neighbor — the mean-neighbor covariate shifts
+                # by 1/N, giving the per-neighbor spillover effect.
+                nbr_off = (0, 1)
+                spill = []
+                for a in dataset.treatment_values:
+                    preds_a = self.predict(
+                        dataset, self.max_nodes, a=a,
+                        change="nbr_one", nbr_off=nbr_off,
+                    )
+                    spill.append(preds_a)
+                spill = np.concatenate(spill, axis=1)
+                s = spill.mean(0)
+                effects["spill"] = s[1] - s[0]
+            else:
+                spill = []
+                for a in dataset.treatment_values:
+                    preds_a = self.predict(dataset, self.max_nodes, a=a, change="nbr")
+                    spill.append(preds_a)
+                spill = np.concatenate(spill, axis=1)
+                s = spill.mean(0)
+                effects["spill"] = s[1] - s[0]
 
         return effects
 
@@ -298,6 +318,6 @@ class EMAP(SpaceAlgo):
         m = self.head_model.tune_metric(new_dataset)
         return m if not np.isnan(m) else 10_000.0
 
-    def predict(self, dataset: SpaceDataset, nodes, a, change) -> np.ndarray:
-        new_dataset, _ = self._build_augmented_dataset(dataset, nodes, a=a, change=change)
+    def predict(self, dataset: SpaceDataset, nodes, a, change, nbr_off=None) -> np.ndarray:
+        new_dataset, _ = self._build_augmented_dataset(dataset, nodes, a=a, change=change, nbr_off=nbr_off)
         return self.head_model.predict(new_dataset)
