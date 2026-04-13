@@ -900,6 +900,7 @@ class Deconfounder(SpaceAlgo):
         spatial_split_kwargs: dict | None = None,
         batch_size = None,
         w_lags: int = 1,
+        nbr_treatment_radius: int = None,
     ):
         """
         Initialize Interference-Aware Deconfounder with optional device specification.
@@ -948,6 +949,7 @@ class Deconfounder(SpaceAlgo):
         self.epochs_head = epochs_head
         self.head = head
         self.cvae_radius = self.cvae_kwargs["radius"]
+        self.nbr_treatment_radius = nbr_treatment_radius if nbr_treatment_radius is not None else self.cvae_radius
         
         if batch_size is not None:
             global total_batch_size
@@ -975,7 +977,34 @@ class Deconfounder(SpaceAlgo):
     def _to_numpy(self, tensor: torch.Tensor) -> np.ndarray:
         """Convert tensor back to numpy array."""
         return tensor.detach().cpu().numpy()
-    
+
+    @staticmethod
+    def _extract_neighbor_treatments(treatments):
+        """Extract flattened neighbor treatments (center removed) from a treatment patch.
+
+        Args:
+            treatments: Tensor of shape (B, 2r+1, 2r+1, C)
+
+        Returns:
+            numpy array of shape (B, (2r+1)^2 - 1)
+        """
+        B, H, W, C = treatments.shape
+        flat = treatments.view(B, -1, C)
+        center_idx = (H * W) // 2
+        flat_wo_center = torch.cat(
+            [flat[:, :center_idx], flat[:, center_idx+1:]], dim=1
+        )
+        return flat_wo_center.squeeze(-1).cpu().numpy()
+
+    def _get_neighbor_treatment_data(self, dataset, nodes, treat_scaler=None, feat_scaler=None, output_scaler=None, a=None, change=None):
+        """Build a CVAEDataset at nbr_treatment_radius for extracting neighbor treatments."""
+        return CVAEDataset(
+            dataset, nodes, self.max_coords2id, self.nbr_treatment_radius,
+            treat_scaler, feat_scaler, output_scaler,
+            a=a, change=change, datatype=dataset.datatype,
+            dataset_radius=dataset.conf_radius,
+        )
+
     def fit(self, dataset: SpaceDataset, tune=False):
         import wandb
         os.environ["WANDB_START_METHOD"] = "thread"
@@ -997,15 +1026,15 @@ class Deconfounder(SpaceAlgo):
             graph, 
             init_frac= 0.02, 
             levels = 1, 
-            buffer = 1 + max(self.cvae_radius, dataset.radius), 
-            radius = max(self.cvae_radius, dataset.radius),
+            buffer = 1 + max(self.cvae_radius, self.nbr_treatment_radius, dataset.radius),
+            radius = max(self.cvae_radius, self.nbr_treatment_radius, dataset.radius),
         )
         self.train_ix = train_ix
         self.test_ix = test_ix
         
         graph = nx.from_edgelist(dataset.full_edge_list)        
         node_list = list(graph.nodes())
-        nbrs = {node: get_k_hop_neighbors(graph, node,  max(dataset.radius, self.cvae_radius)) for node in node_list}
+        nbrs = {node: get_k_hop_neighbors(graph, node,  max(dataset.radius, self.cvae_radius, self.nbr_treatment_radius)) for node in node_list}
         nbr_counts = {node: len(neigh) for node, neigh in nbrs.items()}
         max_count = max(nbr_counts.values())
         
@@ -1107,27 +1136,21 @@ class Deconfounder(SpaceAlgo):
         LOGGER.debug(f"Building outcome head {self.head}...")
         
         if self.head == "spatialplus" or self.head == "s2sls-lag1":
-            
+
             spatialplusdata = CVAEDataset(dataset, self.max_nodes, self.max_coords2id, self.cvae_radius, datatype=dataset.datatype, dataset_radius=dataset.conf_radius)
             latent_loader = DataLoader(spatialplusdata, batch_size=total_batch_size, shuffle=False, num_workers=4, pin_memory=True)
-            
-            B = spatialplusdata.treatments.shape[0]
-            if self.cvae_radius != 0:
-                B, H, W, C = spatialplusdata.treatments.shape
-                flat = spatialplusdata.treatments.view(B, -1, C)              # [B, (2r+1)^2, 1]
-                center_idx = (H * W) // 2
-                flat_wo_center = torch.cat(
-                    [flat[:, :center_idx], flat[:, center_idx+1:]], dim=1
-                )  # [B, (2r+1)^2 - 1, 1]
 
-                flat_wo_center = flat_wo_center.squeeze(-1).cpu().numpy()
-            
+            B = spatialplusdata.treatments.shape[0]
+            if self.nbr_treatment_radius != 0:
+                nbr_treat_data = self._get_neighbor_treatment_data(dataset, self.max_nodes)
+                flat_wo_center = self._extract_neighbor_treatments(nbr_treat_data.treatments)
+
             val_latents = self.cvae_trainer.predict(self.cvae_model, latent_loader)
             val_latents = torch.cat([o[latent_idx] for o in val_latents]).view(B, -1).cpu().numpy()
-            
-            
+
+
             new_dataset = deepcopy(dataset)
-            if self.cvae_radius != 0:
+            if self.nbr_treatment_radius != 0:
                 new_dataset.covariates = np.concatenate([new_dataset.covariates, flat_wo_center, val_latents], axis=1)
             else:
                 new_dataset.covariates = np.concatenate([new_dataset.covariates, val_latents], axis=1)
@@ -1147,12 +1170,12 @@ class Deconfounder(SpaceAlgo):
 
             self.unet_kwargs["feature_dim"] = dataset.covariates.shape[1] + (self.cvae_kwargs["encoder_conv2"] // 2)
             self.unet_kwargs["datatype"] = dataset.datatype
-            self.unet_kwargs["radius"] = max(self.cvae_radius, dataset.conf_radius)
+            self.unet_kwargs["radius"] = max(self.cvae_radius, self.nbr_treatment_radius, dataset.conf_radius)
 
             self.head_model = UNetHead(**self.unet_kwargs)
 
-            self.head_traindata = UNetDataset(dataset, self.train_ix, self.max_coords2id, self.cvae_radius, datatype=dataset.datatype, latent=train_latents, dataset_radius=dataset.conf_radius)
-            self.head_valdata = UNetDataset(dataset, self.test_ix, self.max_coords2id, self.cvae_radius, self.head_traindata.treat_scaler, self.head_traindata.feat_scaler, self.head_traindata.output_scaler, datatype=dataset.datatype, latent=val_latents, dataset_radius=dataset.conf_radius)
+            self.head_traindata = UNetDataset(dataset, self.train_ix, self.max_coords2id, self.nbr_treatment_radius, datatype=dataset.datatype, latent=train_latents, dataset_radius=dataset.conf_radius)
+            self.head_valdata = UNetDataset(dataset, self.test_ix, self.max_coords2id, self.nbr_treatment_radius, self.head_traindata.treat_scaler, self.head_traindata.feat_scaler, self.head_traindata.output_scaler, datatype=dataset.datatype, latent=val_latents, dataset_radius=dataset.conf_radius)
 
             loader = DataLoader(self.head_traindata, batch_size=total_batch_size, shuffle=True, num_workers=4, pin_memory=True)
             val_loader = DataLoader(self.head_valdata, batch_size=total_batch_size, shuffle=False, num_workers=4, pin_memory=True)
@@ -1341,7 +1364,7 @@ class Deconfounder(SpaceAlgo):
             if PER_NEIGHBOR_SPILLOVER:
                 # Per-neighbor spillover: flip ONE neighbor at a time,
                 # then average the effect across all neighbor positions.
-                model_radius = self.cvae_radius
+                model_radius = self.nbr_treatment_radius
                 nbr_positions = [
                     (dr, dc)
                     for dr in range(-model_radius, model_radius + 1)
@@ -1488,14 +1511,13 @@ class Deconfounder(SpaceAlgo):
                 return 100000
 
             new_dataset = deepcopy(dataset)
-            B = predict_data.treatments.shape[0]
-            if self.cvae_radius != 0:
-                B, H, W, C = predict_data.treatments.shape
-                flat = predict_data.treatments.view(B, -1, C)
-                center_idx = (H * W) // 2
-                flat_wo_center = torch.cat(
-                    [flat[:, :center_idx], flat[:, center_idx+1:]], dim=1
-                ).squeeze(-1).cpu().numpy()
+            if self.nbr_treatment_radius != 0:
+                nbr_treat_data = self._get_neighbor_treatment_data(
+                    dataset, self.max_nodes,
+                    self.cvae_traindata.treat_scaler, self.cvae_traindata.feat_scaler,
+                    self.cvae_traindata.output_scaler,
+                )
+                flat_wo_center = self._extract_neighbor_treatments(nbr_treat_data.treatments)
 
                 new_dataset.covariates = np.concatenate([new_dataset.covariates, flat_wo_center, latents], axis=1)
             else:
@@ -1554,7 +1576,7 @@ class Deconfounder(SpaceAlgo):
             head_a, head_change = a, change
 
         if self.head == "unet":
-            predict_head_data = UNetDataset(head_dataset, nodes, self.max_coords2id, self.cvae_radius, self.head_traindata.treat_scaler, self.head_traindata.feat_scaler, self.head_traindata.output_scaler, a=head_a, change=head_change, datatype=dataset.datatype, latent=latents, dataset_radius=dataset.conf_radius, nbr_off=nbr_off)
+            predict_head_data = UNetDataset(head_dataset, nodes, self.max_coords2id, self.nbr_treatment_radius, self.head_traindata.treat_scaler, self.head_traindata.feat_scaler, self.head_traindata.output_scaler, a=head_a, change=head_change, datatype=dataset.datatype, latent=latents, dataset_radius=dataset.conf_radius, nbr_off=nbr_off)
 
             loader = DataLoader(predict_head_data, batch_size=total_batch_size, shuffle=False, num_workers=4, pin_memory=True)
             preds = torch.cat(self.head_trainer.predict(self.head_model, loader))
@@ -1568,20 +1590,15 @@ class Deconfounder(SpaceAlgo):
                 new_dataset.treatment = cf_full_treatment[nodes] if len(cf_full_treatment) > len(nodes) else cf_full_treatment
             elif change == "center" and a is not None:
                 new_dataset.treatment = np.full_like(new_dataset.treatment, a)
-            if self.cvae_radius != 0:
+            if self.nbr_treatment_radius != 0:
                 # Build counterfactual treatment patch for neighbor covariates
                 counterfactual_data = CVAEDataset(
-                    head_dataset, nodes, self.max_coords2id, self.cvae_radius,
+                    head_dataset, nodes, self.max_coords2id, self.nbr_treatment_radius,
                     self.cvae_traindata.treat_scaler, self.cvae_traindata.feat_scaler,
                     self.cvae_traindata.output_scaler, a=head_a, change=head_change,
                     datatype=dataset.datatype, dataset_radius=dataset.conf_radius
                 )
-                B, H, W, C = counterfactual_data.treatments.shape
-                flat = counterfactual_data.treatments.view(B, -1, C)
-                center_idx = (H * W) // 2
-                flat_wo_center = torch.cat(
-                    [flat[:, :center_idx], flat[:, center_idx+1:]], dim=1
-                ).squeeze(-1).cpu().numpy()
+                flat_wo_center = self._extract_neighbor_treatments(counterfactual_data.treatments)
 
                 new_dataset.covariates = np.concatenate([new_dataset.covariates, flat_wo_center, latents], axis=1)
             else:
