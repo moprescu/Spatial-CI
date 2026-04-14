@@ -410,8 +410,6 @@ class ArcticEnv:
             full_covariates=obs_covars,
             full_outcome=self.outcome,
             full_coordinates=self.coordinates,
-            full_counterfactuals=self.counterfactuals,
-            full_spill_counterfactuals=self.spill_counterfactuals,
             datatype=self.datatype,
         )
 

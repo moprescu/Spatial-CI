@@ -3,7 +3,6 @@ import os
 import pickle
 import shutil
 import time
-from copy import deepcopy
 
 import hydra
 import jsonlines
@@ -47,10 +46,13 @@ def main(cfg: DictConfig) -> None:
         shutil.rmtree(raydir)
 
     env_name = cfg.spaceenv
+    algo_rad = 0
+    if cfg.algo.use_interference:
+        algo_rad = max(cfg.algo.method.radius, cfg.algo.method.get("nbr_treatment_radius", None) or cfg.algo.method.radius)
     if env_name.startswith("arctic"):
-        env = ArcticEnv(env_name, dir="downloads", algo_rad=0 if not cfg.algo.use_interference else cfg.algo.method.radius)
+        env = ArcticEnv(env_name, dir="downloads", algo_rad=algo_rad)
     else:
-        env = SpaceEnv(env_name, dir="downloads", algo_rad=0 if not cfg.algo.use_interference else cfg.algo.method.radius)
+        env = SpaceEnv(env_name, dir="downloads", algo_rad=algo_rad)
     # print(env.coordinates)
         
     for gseed in cfg.global_seeds:
@@ -195,14 +197,8 @@ def main(cfg: DictConfig) -> None:
             # torch.cuda.reset_peak_memory_stats()
             # torch.cuda.ipc_collect()
                     
-            # load evaluator — subset counterfactuals if the method only predicts on a node subset
-            eval_dataset = full_dataset
-            if "_eval_nodes" in effects:
-                eval_nodes = effects.pop("_eval_nodes")
-                eval_dataset = deepcopy(full_dataset)
-                eval_dataset.counterfactuals = full_dataset.full_counterfactuals[eval_nodes]
-                eval_dataset.spill_counterfactuals = full_dataset.full_spill_counterfactuals[eval_nodes]
-            evaluator = sci.DatasetEvaluator(eval_dataset)
+            # load evaluator
+            evaluator = sci.DatasetEvaluator(full_dataset)
             eval_keys = {"ate", "att", "atc", "ite", "erf", "spill"}
             eval_results = evaluator.eval(**{k: v for k, v in effects.items() if k in eval_keys})
             eval_results = {k: float(eval_results[k]) if eval_results.get(k) is not None else None for k in ("ate", "erf", "ite", "spill")}
