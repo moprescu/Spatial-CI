@@ -1,5 +1,6 @@
 import logging
 import os
+import pickle
 import shutil
 import time
 
@@ -176,6 +177,14 @@ def main(cfg: DictConfig) -> None:
                     tune_metric = method.tune_metric(test_dataset)
                     num_trials = num_trials + 1
             effects = method.eval(full_dataset)
+
+            # save the final trained model
+            model_path = logfile.replace(".jsonl", f"_i{i}_seed{gseed}_model.pkl")
+            os.makedirs(os.path.dirname(model_path), exist_ok=True)
+            with open(model_path, "wb") as f:
+                pickle.dump(method, f)
+            LOGGER.info(f"Saved model to {model_path}")
+
             # method.plot_latent(full_dataset, logfile.replace(".jsonl", f"_i{i}_seed{gseed}.pdf"))
             # LOGGER.info(f"actual effects: {effects}")
             
