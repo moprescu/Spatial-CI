@@ -3,6 +3,7 @@ import os
 import pickle
 import shutil
 import time
+from copy import deepcopy
 
 import hydra
 import jsonlines
@@ -194,8 +195,14 @@ def main(cfg: DictConfig) -> None:
             # torch.cuda.reset_peak_memory_stats()
             # torch.cuda.ipc_collect()
                     
-            # load evaluator
-            evaluator = sci.DatasetEvaluator(full_dataset)
+            # load evaluator — subset counterfactuals if the method only predicts on a node subset
+            eval_dataset = full_dataset
+            if "_eval_nodes" in effects:
+                eval_nodes = effects.pop("_eval_nodes")
+                eval_dataset = deepcopy(full_dataset)
+                eval_dataset.counterfactuals = full_dataset.full_counterfactuals[eval_nodes]
+                eval_dataset.spill_counterfactuals = full_dataset.full_spill_counterfactuals[eval_nodes]
+            evaluator = sci.DatasetEvaluator(eval_dataset)
             eval_keys = {"ate", "att", "atc", "ite", "erf", "spill"}
             eval_results = evaluator.eval(**{k: v for k, v in effects.items() if k in eval_keys})
             eval_results = {k: float(eval_results[k]) if eval_results.get(k) is not None else None for k in ("ate", "erf", "ite", "spill")}

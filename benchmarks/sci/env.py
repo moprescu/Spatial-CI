@@ -52,6 +52,8 @@ class SpaceDataset:
     full_covariates: np.ndarray = None
     full_outcome: np.ndarray = None
     full_coordinates: np.ndarray = None
+    full_counterfactuals: np.ndarray = None
+    full_spill_counterfactuals: np.ndarray = None
     datatype: str = None
 
     def has_binary_treatment(self) -> bool:
@@ -171,6 +173,8 @@ class SpaceDataset:
             full_covariates=self.full_covariates,
             full_outcome=self.full_outcome,
             full_coordinates=self.full_coordinates,
+            full_counterfactuals=self.full_counterfactuals,
+            full_spill_counterfactuals=self.full_spill_counterfactuals,
             datatype=self.datatype,
         )
 
@@ -247,6 +251,8 @@ class SpaceDataset:
                 full_covariates=self.full_covariates,
                 full_outcome=self.full_outcome,
                 full_coordinates=self.full_coordinates,
+                full_counterfactuals=self.full_counterfactuals,
+                full_spill_counterfactuals=self.full_spill_counterfactuals,
                 datatype=self.datatype,
             )
 
@@ -593,9 +599,11 @@ class SpaceEnv:
             full_covariates=obs_covars,
             full_outcome=self.outcome,
             full_coordinates=self.coordinates,
+            full_counterfactuals=self.counterfactuals,
+            full_spill_counterfactuals=self.spill_counterfactuals,
             datatype=self.datatype,
         )
-        
+
         if "grid" in self.metadata["base_name"]:
             return dataset[self.max_nodes]
         else:

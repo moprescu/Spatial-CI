@@ -1373,7 +1373,7 @@ class Deconfounder(SpaceAlgo):
             ite.append(preds_a)
         ite = np.concatenate(ite, axis=1)
 
-        effects = {"erf": ite.mean(0), "ite": ite}
+        effects = {"erf": ite.mean(0), "ite": ite, "_eval_nodes": self.max_nodes}
 
         if dataset.has_binary_treatment():
             effects["ate"] = effects["erf"][1] - effects["erf"][0]
