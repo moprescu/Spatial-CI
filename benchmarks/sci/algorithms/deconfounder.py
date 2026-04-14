@@ -1150,11 +1150,14 @@ class Deconfounder(SpaceAlgo):
 
 
             new_dataset = deepcopy(dataset)
+            new_dataset.covariates = dataset.full_covariates[self.max_nodes]
+            new_dataset.treatment = dataset.full_treatment[self.max_nodes]
+            new_dataset.outcome = dataset.full_outcome[self.max_nodes]
             if self.nbr_treatment_radius != 0:
                 new_dataset.covariates = np.concatenate([new_dataset.covariates, flat_wo_center, val_latents], axis=1)
             else:
                 new_dataset.covariates = np.concatenate([new_dataset.covariates, val_latents], axis=1)
-            
+
             if self.head == "spatialplus":
                 self.head_model = SpatialPlus(**self.spatialplus_kwargs)
                 self.head_model.fit(new_dataset)
@@ -1511,6 +1514,9 @@ class Deconfounder(SpaceAlgo):
                 return 100000
 
             new_dataset = deepcopy(dataset)
+            new_dataset.covariates = dataset.full_covariates[self.max_nodes]
+            new_dataset.treatment = dataset.full_treatment[self.max_nodes]
+            new_dataset.outcome = dataset.full_outcome[self.max_nodes]
             if self.nbr_treatment_radius != 0:
                 nbr_treat_data = self._get_neighbor_treatment_data(
                     dataset, self.max_nodes,
@@ -1586,6 +1592,9 @@ class Deconfounder(SpaceAlgo):
 
         elif self.head == "spatialplus" or self.head == "s2sls-lag1":
             new_dataset = deepcopy(dataset)
+            new_dataset.covariates = dataset.full_covariates[nodes]
+            new_dataset.treatment = dataset.full_treatment[nodes]
+            new_dataset.outcome = dataset.full_outcome[nodes]
             if cf_full_treatment is not None:
                 new_dataset.treatment = cf_full_treatment[nodes] if len(cf_full_treatment) > len(nodes) else cf_full_treatment
             elif change == "center" and a is not None:
