@@ -996,6 +996,28 @@ class Deconfounder(SpaceAlgo):
         )
         return flat_wo_center.squeeze(-1).cpu().numpy()
 
+    def _subset_dataset_to_nodes(self, dataset, nodes):
+        """Create a shallow copy of dataset with arrays subsetted to `nodes` (indices into full_* arrays)."""
+        new_dataset = deepcopy(dataset)
+        new_dataset.covariates = dataset.full_covariates[nodes]
+        new_dataset.treatment = dataset.full_treatment[nodes]
+        new_dataset.outcome = dataset.full_outcome[nodes]
+        if dataset.full_coordinates is not None:
+            new_dataset.coordinates = dataset.full_coordinates[nodes]
+        # Re-index edges to the subsetted node list
+        nodes_set = set(nodes)
+        reindex = {old: new for new, old in enumerate(nodes)}
+        new_dataset.edges = [
+            (reindex[e[0]], reindex[e[1]])
+            for e in dataset.full_edge_list
+            if e[0] in nodes_set and e[1] in nodes_set
+        ]
+        if hasattr(dataset, 'counterfactuals') and dataset.counterfactuals is not None:
+            new_dataset.counterfactuals = dataset.counterfactuals[nodes]
+        if hasattr(dataset, 'spill_counterfactuals') and dataset.spill_counterfactuals is not None:
+            new_dataset.spill_counterfactuals = dataset.spill_counterfactuals[nodes]
+        return new_dataset
+
     def _get_neighbor_treatment_data(self, dataset, nodes, treat_scaler=None, feat_scaler=None, output_scaler=None, a=None, change=None):
         """Build a CVAEDataset at nbr_treatment_radius for extracting neighbor treatments."""
         return CVAEDataset(
@@ -1149,10 +1171,7 @@ class Deconfounder(SpaceAlgo):
             val_latents = torch.cat([o[latent_idx] for o in val_latents]).view(B, -1).cpu().numpy()
 
 
-            new_dataset = deepcopy(dataset)
-            new_dataset.covariates = dataset.full_covariates[self.max_nodes]
-            new_dataset.treatment = dataset.full_treatment[self.max_nodes]
-            new_dataset.outcome = dataset.full_outcome[self.max_nodes]
+            new_dataset = self._subset_dataset_to_nodes(dataset, self.max_nodes)
             if self.nbr_treatment_radius != 0:
                 new_dataset.covariates = np.concatenate([new_dataset.covariates, flat_wo_center, val_latents], axis=1)
             else:
@@ -1513,10 +1532,7 @@ class Deconfounder(SpaceAlgo):
             if np.isnan(latents).any():
                 return 100000
 
-            new_dataset = deepcopy(dataset)
-            new_dataset.covariates = dataset.full_covariates[self.max_nodes]
-            new_dataset.treatment = dataset.full_treatment[self.max_nodes]
-            new_dataset.outcome = dataset.full_outcome[self.max_nodes]
+            new_dataset = self._subset_dataset_to_nodes(dataset, self.max_nodes)
             if self.nbr_treatment_radius != 0:
                 nbr_treat_data = self._get_neighbor_treatment_data(
                     dataset, self.max_nodes,
@@ -1591,10 +1607,7 @@ class Deconfounder(SpaceAlgo):
             preds = self.head_traindata.output_scaler.inverse_transform(preds)
 
         elif self.head == "spatialplus" or self.head == "s2sls-lag1":
-            new_dataset = deepcopy(dataset)
-            new_dataset.covariates = dataset.full_covariates[nodes]
-            new_dataset.treatment = dataset.full_treatment[nodes]
-            new_dataset.outcome = dataset.full_outcome[nodes]
+            new_dataset = self._subset_dataset_to_nodes(dataset, nodes)
             if cf_full_treatment is not None:
                 new_dataset.treatment = cf_full_treatment[nodes] if len(cf_full_treatment) > len(nodes) else cf_full_treatment
             elif change == "center" and a is not None:
