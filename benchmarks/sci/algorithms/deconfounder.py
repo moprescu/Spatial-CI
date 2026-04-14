@@ -1012,10 +1012,6 @@ class Deconfounder(SpaceAlgo):
             for e in dataset.full_edge_list
             if e[0] in nodes_set and e[1] in nodes_set
         ]
-        if hasattr(dataset, 'counterfactuals') and dataset.counterfactuals is not None:
-            new_dataset.counterfactuals = dataset.counterfactuals[nodes]
-        if hasattr(dataset, 'spill_counterfactuals') and dataset.spill_counterfactuals is not None:
-            new_dataset.spill_counterfactuals = dataset.spill_counterfactuals[nodes]
         return new_dataset
 
     def _get_neighbor_treatment_data(self, dataset, nodes, treat_scaler=None, feat_scaler=None, output_scaler=None, a=None, change=None):
