@@ -628,13 +628,15 @@ def haversine(lat1, lon1, lat2, lon2):
 
 def add_neighbor_columns(df, nbrs, nbr_cols, max_nbrs, coords, a=None, change=None, treatment=None,
                                  is_binary_treatment=None, spaceenv=None, get_t_pct=None, spline_basis=None,
-                                 extra_colnames=None, covariates=None, nbr_idx=None):
+                                 extra_colnames=None, covariates=None, nbr_idx=None, nbr_half_seed=42):
     # Initialize neighbor columns with NaN instead of 0
     dftrain = df.copy()
     for feature in nbr_cols:
         for i in range(1, max_nbrs + 1):
             dftrain[f"{feature}_nbr_{i}"] = float('nan')
-    
+
+    nbr_half_rng = np.random.default_rng(nbr_half_seed) if change == "nbr_half" else None
+
     for node in dftrain.index:
         lat1, lon1 = coords.loc[node, ['latitude', 'longitude']]
         neighbors = list(nbrs.get(node, []))
@@ -647,7 +649,15 @@ def add_neighbor_columns(df, nbrs, nbr_cols, max_nbrs, coords, a=None, change=No
         
         # Filter neighbors that exist in dftrain
         valid_neighbors = [nbr for nbr in neighbors_sorted if nbr in dftrain.index]
-        
+
+        # For nbr_half: pre-compute per-node random 0/1 mask across max_nbrs slots (half 1s, half 0s)
+        if change == "nbr_half":
+            half_mask = np.zeros(max_nbrs, dtype=int)
+            perm = nbr_half_rng.permutation(max_nbrs)
+            half_mask[perm[: max_nbrs // 2]] = 1
+        else:
+            half_mask = None
+
         for feature in nbr_cols:
             # Get feature values for all valid neighbors
             neighbor_values = [dftrain.at[nbr_node, feature] for nbr_node in valid_neighbors]
@@ -669,19 +679,20 @@ def add_neighbor_columns(df, nbrs, nbr_cols, max_nbrs, coords, a=None, change=No
                     # Use mean of all neighbors for missing positions
                     dftrain.at[node, colname] = mean_value
                     
-                if change == "nbr" or (change == "nbr_k" and nbr_idx is not None and i == nbr_idx - 1):
+                if change == "nbr" or (change == "nbr_k" and nbr_idx is not None and i == nbr_idx - 1) or change == "nbr_half":
+                    effective_a = half_mask[i] if change == "nbr_half" else a
                     if treatment == feature:
-                        extra_value = a
+                        extra_value = effective_a
                     elif feature in extra_colnames:
                         if not is_binary_treatment and spaceenv.bsplines:
-                            t_a_pct = get_t_pct(a)
+                            t_a_pct = get_t_pct(effective_a)
                             # Find which spline basis this column corresponds to
                             col_idx = extra_colnames.index(feature)
                             extra_value = spline_basis[col_idx](t_a_pct)
                         elif is_binary_treatment and spaceenv.binary_treatment_iteractions:
                             col_idx = extra_colnames.index(feature)
-                            covariate_val = dftrain.at[nbr_node, covariates[col_idx]]
-                            extra_value = covariate_val * a
+                            covariate_val = dftrain.at[nbr_node, covariates[col_idx]] if i < len(valid_neighbors) else dftrain.at[node, covariates[col_idx]]
+                            extra_value = covariate_val * effective_a
 
                     dftrain.at[node, colname] = extra_value
                     
@@ -1182,7 +1193,7 @@ def feature_importance(
 def create_grid_features_compact(dftrain, radius=2, fill_missing='mean', a=None, change=None, treatment=None,
                                  is_binary_treatment=None, spaceenv=None, get_t_pct=None, spline_basis=None,
                                  extra_colnames=None, covariates=None, nbr_idx=None,
-                                 asym_treatment=False):
+                                 asym_treatment=False, nbr_half_seed=42):
     """
     Efficiently create grid neighborhoods for each point as 2D arrays (grids),
     storing them in a new column per feature. Also creates individual columns
@@ -1262,6 +1273,18 @@ def create_grid_features_compact(dftrain, radius=2, fill_missing='mean', a=None,
     nbr_positions = [(dr, dc) for dr in range(-radius, radius + 1)
                      for dc in range(-radius, radius + 1)
                      if not (dr == 0 and dc == 0)]
+
+    nbr_half_rng = np.random.default_rng(nbr_half_seed) if change == "nbr_half" else None
+    # Pre-compute per-point random half-mask over nbr_positions (half 1s, half 0s)
+    if change == "nbr_half":
+        n_nbr = len(nbr_positions)
+        n_points = len(rows)
+        nbr_half_masks = np.zeros((n_points, n_nbr), dtype=int)
+        for pi in range(n_points):
+            perm = nbr_half_rng.permutation(n_nbr)
+            nbr_half_masks[pi, perm[: n_nbr // 2]] = 1
+    else:
+        nbr_half_masks = None
 
     # For each feature
     for col in feature_cols:
@@ -1344,6 +1367,11 @@ def create_grid_features_compact(dftrain, radius=2, fill_missing='mean', a=None,
                     # Change only the single neighbor at position nbr_idx (1-indexed) to value a
                     nbr_dr, nbr_dc = nbr_positions[nbr_idx - 1]
                     neighborhood[center_r + nbr_dr, center_c + nbr_dc] = a
+                elif change == "nbr_half":
+                    # Randomly set half of neighbors to 1, rest to 0
+                    mask_i = nbr_half_masks[i]
+                    for k_idx, (nbr_dr, nbr_dc) in enumerate(nbr_positions):
+                        neighborhood[center_r + nbr_dr, center_c + nbr_dc] = mask_i[k_idx]
 
             # Apply spatial changes to extra columns (spline/interaction features)
             if extra_colnames is not None and col in extra_colnames:
@@ -1375,6 +1403,21 @@ def create_grid_features_compact(dftrain, radius=2, fill_missing='mean', a=None,
                 elif change == "nbr_k" and nbr_idx is not None:
                     nbr_dr, nbr_dc = nbr_positions[nbr_idx - 1]
                     neighborhood[center_r + nbr_dr, center_c + nbr_dc] = extra_value
+                elif change == "nbr_half":
+                    mask_i = nbr_half_masks[i]
+                    for k_idx, (nbr_dr, nbr_dc) in enumerate(nbr_positions):
+                        m_a = mask_i[k_idx]
+                        if not is_binary_treatment and spaceenv.bsplines:
+                            t_m_pct = get_t_pct(m_a)
+                            col_idx = extra_colnames.index(col)
+                            ev = spline_basis[col_idx](t_m_pct)
+                        elif is_binary_treatment and spaceenv.binary_treatment_iteractions:
+                            col_idx = extra_colnames.index(col)
+                            covariate_val = result_df[covariates[col_idx]].iloc[i]
+                            ev = covariate_val * m_a
+                        else:
+                            ev = extra_value
+                        neighborhood[center_r + nbr_dr, center_c + nbr_dc] = ev
 
             # ASYM mask: for the treatment column only, blank out cells with
             # dc < 0 so the image patch (and tabular cells) only carries the
@@ -1426,6 +1469,9 @@ def create_grid_features_compact(dftrain, radius=2, fill_missing='mean', a=None,
                     nbr_dr, nbr_dc = nbr_positions[nbr_idx - 1]
                     if dr == nbr_dr and dc == nbr_dc:
                         cell_data[cell_col_name] = [a] * len(cell_data[cell_col_name])
+                elif change == "nbr_half" and (dr != 0 or dc != 0):
+                    k_idx = nbr_positions.index((dr, dc))
+                    cell_data[cell_col_name] = [int(nbr_half_masks[pi, k_idx]) for pi in range(len(cell_data[cell_col_name]))]
 
                 # ASYM: enforce mask on dc < 0 cells regardless of change
                 if asym_treatment and dc < 0:
@@ -1476,6 +1522,20 @@ def create_grid_features_compact(dftrain, radius=2, fill_missing='mean', a=None,
                             cell_data[cell_col_name] = covariate_vals
                         else:
                             cell_data[cell_col_name] = [extra_value] * len(cell_data[cell_col_name])
+                elif change == "nbr_half" and (dr != 0 or dc != 0):
+                    k_idx = nbr_positions.index((dr, dc))
+                    per_point_vals = []
+                    for pi in range(len(result_df)):
+                        m_a = int(nbr_half_masks[pi, k_idx])
+                        if not is_binary_treatment and spaceenv.bsplines:
+                            t_m_pct = get_t_pct(m_a)
+                            per_point_vals.append(spline_basis[col_idx](t_m_pct))
+                        elif is_binary_treatment and spaceenv.binary_treatment_iteractions:
+                            cov_val = result_df[covariates[col_idx]].iloc[pi]
+                            per_point_vals.append(cov_val * m_a)
+                        else:
+                            per_point_vals.append(m_a)
+                    cell_data[cell_col_name] = per_point_vals
 
         # Add results
         result_df[f"{col}_grid"] = grids

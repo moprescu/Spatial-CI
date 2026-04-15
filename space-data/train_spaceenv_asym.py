@@ -1334,6 +1334,17 @@ def main(cfg: DictConfig):
         spill_one_mu_cf_all = pd.concat(spill_one_mu_cf_all, axis=1)
         spill_one_Y_cf_all = pd.concat(spill_one_Y_cf_all, axis=1)
 
+        logging.info("Generating half-neighbors spillover counterfactual (random 50% treated).")
+        cfdata = df.copy()
+        cfdata_graph = utils.add_neighbor_columns(cfdata, nbrs, feat_cols, max_nbrs, map_df,
+                                                 change="nbr_half", treatment=spaceenv.treatment,
+                                     is_binary_treatment=is_binary_treatment, spaceenv=spaceenv, get_t_pct=get_t_pct, spline_basis=spline_basis,
+                                     extra_colnames=extra_colnames, covariates=covariates)
+        spill_half_mu_cf = pd.concat([predictor.predict(cfdata_graph)], axis=1)
+        spill_half_mu_cf.columns = [f"spill_half_{spaceenv.outcome}_pred"]
+        spill_half_Y_cf = spill_half_mu_cf + synth_residuals[:, None]
+        spill_half_Y_cf.columns = ["spill_half_Y_synth"]
+
         logging.info("Plotting counterfactuals and residuals.")
         ix = np.random.choice(len(df), cfg.num_plot_samples)
         cfpred_sample = mu_cf.iloc[ix].values
@@ -1567,7 +1578,7 @@ def main(cfg: DictConfig):
         # === Save results ===
         logging.info(f"Saving synthetic data, graph, and metadata")
         X = df[df.columns.difference([spaceenv.outcome, spaceenv.treatment])]
-        dfout = pd.concat([A, X, mu, mu_cf, Y_synth, Y_cf, spill_mu_cf, spill_Y_cf, spill_one_mu_cf_all, spill_one_Y_cf_all], axis=1)
+        dfout = pd.concat([A, X, mu, mu_cf, Y_synth, Y_cf, spill_mu_cf, spill_Y_cf, spill_one_mu_cf_all, spill_one_Y_cf_all, spill_half_mu_cf, spill_half_Y_cf], axis=1)
 
         # whens saving synthetic data, respect the original data format
         if data_file.endswith("tab"):
@@ -1839,6 +1850,24 @@ def main(cfg: DictConfig):
         spill_one_mu_cf_all = pd.concat(spill_one_mu_cf_all, axis=1)
         spill_one_Y_cf_all = pd.concat(spill_one_Y_cf_all, axis=1)
 
+        logging.info("Generating half-neighbors spillover counterfactual (random 50% treated).")
+        cfdata = df.copy()
+        cfdata_grid, temp_dir = utils.create_grid_features_compact(cfdata,
+                                                                   radius=radius,
+                                                                   change="nbr_half",
+                                                                   treatment=spaceenv.treatment,
+                                                                   is_binary_treatment=is_binary_treatment,
+                                                                   spaceenv=spaceenv,
+                                                                   get_t_pct=get_t_pct,
+                                                                   spline_basis=spline_basis,
+                                                                   extra_colnames=extra_colnames,
+                                                                   covariates=covariates,
+                                                                   asym_treatment=True)
+        spill_half_mu_cf = pd.concat([predictor.predict(cfdata_grid)], axis=1)
+        spill_half_mu_cf.columns = [f"spill_half_{spaceenv.outcome}_pred"]
+        spill_half_Y_cf = spill_half_mu_cf + synth_residuals[:, None]
+        spill_half_Y_cf.columns = ["spill_half_Y_synth"]
+
         logging.info("Plotting counterfactuals and residuals.")
         ix = np.random.choice(len(df), cfg.num_plot_samples)
         cfpred_sample = mu_cf.iloc[ix].values
@@ -1974,7 +2003,7 @@ def main(cfg: DictConfig):
         # === Save results ===
         logging.info(f"Saving synthetic data, graph, and metadata")
         X = df[df.columns.difference([spaceenv.outcome, spaceenv.treatment])]
-        dfout = pd.concat([A, X, mu, mu_cf, Y_synth, Y_cf, spill_mu_cf, spill_Y_cf, spill_one_mu_cf_all, spill_one_Y_cf_all], axis=1)
+        dfout = pd.concat([A, X, mu, mu_cf, Y_synth, Y_cf, spill_mu_cf, spill_Y_cf, spill_one_mu_cf_all, spill_one_Y_cf_all, spill_half_mu_cf, spill_half_Y_cf], axis=1)
 
         # whens saving synthetic data, respect the original data format
         if data_file.endswith("tab"):
