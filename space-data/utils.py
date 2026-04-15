@@ -1376,20 +1376,21 @@ def create_grid_features_compact(dftrain, radius=2, fill_missing='mean', a=None,
             # Apply spatial changes to extra columns (spline/interaction features)
             if extra_colnames is not None and col in extra_colnames:
                 center_r, center_c = radius, radius  # Center position in neighborhood
-                
+
                 # Calculate the value for this extra column based on treatment value a
-                
-                if not is_binary_treatment and spaceenv.bsplines:
-                    t_a_pct = get_t_pct(a)
-                    # Find which spline basis this column corresponds to
-                    col_idx = extra_colnames.index(col)
-                    extra_value = spline_basis[col_idx](t_a_pct)          
-                elif is_binary_treatment and spaceenv.binary_treatment_iteractions:
-                    # Find which covariate this extra column corresponds to
-                    # Assuming extra_colnames follow same order as covariates
-                    col_idx = extra_colnames.index(col)
-                    covariate_val = result_df[covariates[col_idx]].iloc[i]
-                    extra_value = covariate_val * a
+                # (skipped for nbr_half, which computes per-neighbor values below)
+                if change != "nbr_half" and a is not None:
+                    if not is_binary_treatment and spaceenv.bsplines:
+                        t_a_pct = get_t_pct(a)
+                        # Find which spline basis this column corresponds to
+                        col_idx = extra_colnames.index(col)
+                        extra_value = spline_basis[col_idx](t_a_pct)
+                    elif is_binary_treatment and spaceenv.binary_treatment_iteractions:
+                        # Find which covariate this extra column corresponds to
+                        # Assuming extra_colnames follow same order as covariates
+                        col_idx = extra_colnames.index(col)
+                        covariate_val = result_df[covariates[col_idx]].iloc[i]
+                        extra_value = covariate_val * a
                 
                 if change == "center":
                     # Change center cell to the calculated extra value
