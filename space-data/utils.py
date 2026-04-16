@@ -1488,21 +1488,21 @@ def create_grid_features_compact(dftrain, radius=2, fill_missing='mean', a=None,
                 dr, dc = int(parts[-2]), int(parts[-1])
 
                 # Calculate the appropriate value for this extra column
+                # (skipped for nbr_half, which computes per-neighbor values below)
+                extra_value = None
+                covariate_vals = None
+                col_idx = extra_colnames.index(col)
+                if change != "nbr_half" and a is not None:
+                    if not is_binary_treatment and spaceenv.bsplines:
+                        t_a_pct = get_t_pct(a)
+                        extra_value = spline_basis[col_idx](t_a_pct)
 
-                if not is_binary_treatment and spaceenv.bsplines:
-                    t_a_pct = get_t_pct(a)
-                    # Find which spline basis this column corresponds to
-                    col_idx = extra_colnames.index(col)
-                    extra_value = spline_basis[col_idx](t_a_pct)
-
-                elif is_binary_treatment and spaceenv.binary_treatment_iteractions:
-                    # Find which covariate this extra column corresponds to
-                    # Use per-point covariate values
-                    covariate_vals = []
-                    for point_i in range(len(result_df)):
-                        covariate_val = result_df[covariates[col_idx]].iloc[point_i]
-                        covariate_vals.append(covariate_val * a)
-                    extra_value = None
+                    elif is_binary_treatment and spaceenv.binary_treatment_iteractions:
+                        # Use per-point covariate values
+                        covariate_vals = []
+                        for point_i in range(len(result_df)):
+                            covariate_val = result_df[covariates[col_idx]].iloc[point_i]
+                            covariate_vals.append(covariate_val * a)
 
                 if change == "center" and dr == 0 and dc == 0:
                     # Change center cell values to calculated extra value
