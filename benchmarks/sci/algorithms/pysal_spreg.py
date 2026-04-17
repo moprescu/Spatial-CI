@@ -134,7 +134,7 @@ class GMLag(SpaceAlgo):
             "erf":       ite.mean(0),
             "ite":       ite,
             "spill":     spill_ite.mean(),
-            "spill_ite": spill_ite,
+            # "spill_ite": spill_ite,
         }
         if dataset.has_binary_treatment():
             effects["ate"] = self.t_coef
@@ -271,7 +271,7 @@ class GMSpatialDurbin(SpaceAlgo):
             "erf":       ite.mean(0),
             "ite":       ite,
             "spill":     spill_ite.mean(),
-            "spill_ite": spill_ite,
+            # "spill_ite": spill_ite,
         }
         if dataset.has_binary_treatment():
             effects["ate"] = self.t_coef
