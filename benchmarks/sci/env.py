@@ -22,7 +22,7 @@ from spacebench.log import LOGGER
 # When True, spillover is estimated per-neighbor (flip ONE neighbor at a time,
 # then average across neighbor positions).  When False, use the original
 # approach (set ALL neighbors to each treatment value simultaneously).
-PER_NEIGHBOR_SPILLOVER = True
+PER_NEIGHBOR_SPILLOVER = False
 
 
 @dataclass
