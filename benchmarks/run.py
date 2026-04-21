@@ -80,6 +80,14 @@ def main(cfg: DictConfig) -> None:
 
             # setup hyperparameter tuning objective
             param_space = dict(hydra.utils.instantiate(cfg.algo.tune.param_space))
+#             # override beta_max range per dataset
+#             if "beta_max" in param_space and "spatialplus" in cfg.algo.name:
+#                 if "healthdgrid_rad1" in env_name:
+#                     param_space["beta_max"] = tune.loguniform(1e-8, 10)
+#                 elif "so4" in env_name and "rad1" in env_name:
+#                     param_space["beta_max"] = tune.loguniform(1e-5, 10)
+#                 elif "rad2" in env_name:
+#                     param_space["beta_max"] = tune.loguniform(1e-5, 1e-4)
             if len(param_space) > 0:
 
                 # Extract small objects from env so the closure doesn't

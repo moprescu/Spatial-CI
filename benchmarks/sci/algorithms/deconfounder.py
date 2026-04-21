@@ -1006,6 +1006,7 @@ class Deconfounder(SpaceAlgo):
         )
 
     def fit(self, dataset: SpaceDataset, tune=False):
+        self.tune = tune
         import wandb
         os.environ["WANDB_START_METHOD"] = "thread"
         os.environ["PYTORCH_LIGHTNING_DEBUG"] = "1"
@@ -1104,14 +1105,12 @@ class Deconfounder(SpaceAlgo):
             del checkpoint
             torch.cuda.empty_cache()
             
-            p_range = [0.25, 0.75]
+            self.p_range = [0.25, 0.75]
             
-            if self.cur_val_p_value < p_range[0] or self.cur_val_p_value > p_range[1]:
-                if tune:
-                    LOGGER.debug(f"Validation p_value too low: {self.cur_val_p_value:.3f}")
-                else:
-                    raise ValueError(f"Validation p_value too low: {self.cur_val_p_value:.3f}")
-                
+            if self.cur_val_p_value < self.p_range[0] or self.cur_val_p_value > self.p_range[1]:
+                LOGGER.debug(f"Validation p_value too low: {self.cur_val_p_value:.3f}")
+                # return 100000
+                # raise ValueError(f"Validation p_value too low: {self.cur_val_p_value:.3f}")
         else:
             LOGGER.warning("No best checkpoint found, using final epoch model")
 
@@ -1491,6 +1490,9 @@ class Deconfounder(SpaceAlgo):
         return effects
 
     def tune_metric(self, dataset: SpaceDataset) -> float:
+        if not self.tune:
+            if self.cur_val_p_value < self.p_range[0] or self.cur_val_p_value > self.p_range[1]:
+                return 10000
         if self.head == "temporal_unet":
             preds = self._temporal_predict_maps(dataset.X[dataset.test_idx], dataset.valid_mask)
             Y_true = dataset.Y[dataset.test_idx]

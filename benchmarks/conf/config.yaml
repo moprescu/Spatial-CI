@@ -27,7 +27,7 @@ algo:  # these config must be overwritten by algo/*.yaml
     param_space: {}
     resources:
       cpu: 4
-      gpu: ${oc.select:gpu_map.${algo.name},1}
+      gpu: ${oc.select:gpu_map.${algo.name},0.25}
     tune_config:
       _target_: ray.tune.TuneConfig
       num_samples: ${oc.select:tune_map.${algo.name},16}
