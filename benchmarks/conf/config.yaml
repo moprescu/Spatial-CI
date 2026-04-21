@@ -13,8 +13,8 @@ spatial_train_test_split:
   # seed: 0
 
 spaceenv: climate_wfsmoke_minrty_disc  # must be a valid spaceenv
-logfile: benchmarks/results/${spaceenv}/${hydra:runtime.choices.algo}.jsonl
-tunefile: benchmarks/results/${spaceenv}/${hydra:runtime.choices.algo}_tune.parquet
+logfile: benchmarks/results/${spaceenv}/${algo.name}.jsonl
+tunefile: benchmarks/results/${spaceenv}/${algo.name}_tune.parquet
 
 algo:  # these config must be overwritten by algo/*.yaml
   needs_train_test_split: ???
@@ -37,7 +37,7 @@ algo:  # these config must be overwritten by algo/*.yaml
       mode: min
     run_config:
       _target_: ray.air.RunConfig
-      storage_path: benchmarks/ray_cache/${spaceenv}/${hydra:runtime.choices.algo}
+      storage_path: benchmarks/ray_cache/${spaceenv}/${algo.name}
 
 gpu_map:
   dapsm: 0
@@ -59,4 +59,4 @@ tune_map:
 
 hydra:
   run:
-    dir: logs/${spaceenv}/${hydra:runtime.choices.algo}
+    dir: logs/${spaceenv}/${algo.name}

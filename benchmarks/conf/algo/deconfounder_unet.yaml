@@ -1,18 +1,24 @@
+# Template for deconfounder + unet. Variants are selected by algo name,
+# e.g. deconfounder_r1_unet_8 or deconfounder_r2_nbr2_unet_2. The Snakefile
+# parses the name into overrides for method.radius, method.encoder_conv2,
+# (optional) method.nbr_treatment_radius, and the unet_base_chan search
+# space (which widens to include 64 when encoder_conv2=64).
 needs_train_test_split: false
 use_interference: true
 
 method:
   _target_: sci.algorithms.Deconfounder
   kernel_size: 3
-  radius: 2
-  nbr_treatment_radius: 2
+  # Required; populated from the algo name by the Snakefile.
+  radius: ???
+  encoder_conv2: ???
+  nbr_treatment_radius: null
   connectivity: 8
   encoder_pool: max
   lr_cvae: 1e-3
   beta_epoch_max: 5
   epochs_cvae: 30
   encoder_conv1: 64
-  encoder_conv2: 2
   # unet kwargs
   head: unet
   epochs_head: 30

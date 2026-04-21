@@ -1,5 +1,7 @@
 # This file is used to generate all the baselines for the paper.
 
+import re
+
 from omegaconf import OmegaConf
 
 conda: "benchmarks/conda.yaml"
@@ -11,6 +13,27 @@ if len(config) == 0:
         "No config file passed to snakemake."
         " Use flag --configfile benchmarks/conf/pipeline_tune.yaml"
     )
+
+
+# Parse tune variant algo names into Hydra overrides that target a shared
+# template in conf/algo/. Supported patterns:
+#   deconfounder_r{R}_spatialplus_tune
+#   deconfounder_r{R}_unet_tune
+_DECONFOUNDER_TUNE_RE = re.compile(
+    r"^deconfounder_r(\d+)_(spatialplus|unet)_tune$"
+)
+
+def algo_hydra_overrides(algo):
+    m = _DECONFOUNDER_TUNE_RE.match(algo)
+    if m:
+        r, head = m.groups()
+        template = f"deconfounder_{head}_tune"
+        return (
+            f"algo={template} "
+            f"algo.name={algo} "
+            f"algo.method.radius={r}"
+        )
+    return f"algo={algo}"
 
 
 # make target files
@@ -39,13 +62,14 @@ rule train_spaceenv:
     params:
         concurrency=config["concurrency"],
         overwrite=config["overwrite"],
+        algo_overrides=lambda w: algo_hydra_overrides(w.algo),
     log:
         err="logs/{spaceenv}/{algo}.err",
     shell:
         """
         export LD_LIBRARY_PATH=/home/idies/workspace/Temporary/akhot2/scratch/spacedata/lib/python3.10/site-packages/nvidia/cuda/lib:$LD_LIBRARY_PATH
         HYDRA_FULL_ERROR=1 python benchmarks/hyperparam_tune.py \
-            algo={wildcards.algo} \
+            {params.algo_overrides} \
             spaceenv={wildcards.spaceenv} \
             concurrency={params.concurrency} \
             overwrite={params.overwrite} \
